@@ -1,5 +1,5 @@
 
-from backend.agents.base_agent import BaseAgent, AgentConfigurationException, AgentRuntimeException
+from base_agent import BaseAgent, AgentConfigurationException, AgentRuntimeException
 import sys,os
 sys.path.append(os.path.join(os.path.dirname(__file__), '../../lib/boto'))
 sys.path.append(os.path.join(os.path.dirname(__file__), '../'))
@@ -10,7 +10,7 @@ import datetime
 import os
 import time,uuid
 from boto.ec2.cloudwatch import MetricAlarm
-from backend.utils import utils
+from utils import utils
 from uuid import uuid4
 import logging
 

@@ -5,7 +5,7 @@ All the input validation is performed in this class.
 '''
 from infrastructure_manager import InfrastructureManager
 import threading
-import os, subprocess, signal, uuid, sys
+import os, subprocess, signal, uuid, sys, shlex, time
 import logging
 from datetime import datetime
 from tasks import *
@@ -108,6 +108,77 @@ class backendservices():
             logging.error("executeTaskLocal : exception raised : %s" , str(e))
             return None
 
+    def executeRTaskLocal(self, params):
+        '''
+        This method spawns an R process.
+        params = dictionary of parameters for execution
+        '''
+        logging.info("executeRTaskLocal: inside method with params: %s", str(params))
+        try:
+            default_params = {
+                'model_file': '/path/to/default/model_file',
+                'model_data': '/path/to/default/data_file',
+                'steps': 'CEU',
+                'seed': '1',
+                'cores': '2',
+                'Kce': '10000',
+                'Kem': '10',
+                'Klik': '10000',
+                'Kcov': '10000',
+                'rho': '.001',
+                'perturb': '.25',
+                'alpha': '.25',
+                'beta': '.25',
+                'gamma': '.25',
+                'k': '3',
+                'pcutoff': '.0001',
+                'qcutoff': '.005',
+                'numIter': '10',
+                'numConverge': '1',
+                'exec': 'bash &',
+                'options': ''
+            }
+            default_params.update(params)
+            logging.info("executeRTaskLocal: params after merging with defaults: %s", str(default_params))
+            print str(default_params)
+            
+            res = {}
+            
+            uuidstr = str(uuid.uuid4())
+            res['uuid'] = uuidstr
+            output_dir = "output/%s" % uuidstr
+            create_dir_str = "mkdir -p %s" % output_dir
+            os.system(create_dir_str)
+            
+            # model_file_path = "app/output/" + uuidstr +"/model-"+uuidstr+".R"
+            # model_file_path = os.path.abspath(model_file_path)
+            # mf_handle = open(model_file_path,'w')
+            # mf_handle.write(params['model_file'])
+            # mf_handle.close()
+            # 
+            # model_data_path = "app/output/" + uuidstr +"/data-"+uuidstr+".txt"
+            # model_data_path = os.path.abspath(model_data_path)
+            # md_handle = open(model_data_path,'w')
+            # md_handle.write(params['model_data'])
+            # md_handle.close()
+            
+            res['stdout'] = os.path.abspath(output_dir + '/stdout')
+            res['stderr'] = os.path.abspath(output_dir + '/stderr')
+            stdout_handle = open(res['stdout'], 'w')
+            stderr_handle = open(res['stderr'], 'w')
+            
+            cmd = "stochoptim/exec/mcem2.r --model {model_file} --data {model_data} --steps {steps} --seed {seed} --cores {cores} --K.ce {Kce} --K.em {Kem} --K.lik {Klik} --K.cov {Kcov} --rho {rho} --perturb {perturb} --alpha {alpha} --beta {beta} --gamma {gamma} --k {k} --pcutoff {pcutoff} --qcutoff {qcutoff} --numIter {numIter} --numConverge {numConverge} --command '{exec}' --options '{options}'".format(**default_params)
+            logging.info("executeRTaskLocal: about to start execution with command string: %s" % cmd)
+            process_handle = subprocess.Popen(shlex.split(cmd), stdout = stdout_handle, stderr = stderr_handle)
+            
+            res['pid'] = process_handle.pid
+            res['output'] = os.path.abspath(output_dir)
+            print res
+            logging.info("executeRTaskLocal: exiting with result: %s", str(res))
+            return res
+        except Exception as e:
+            logging.info("executeRTaskLocal: exception raised: %s", str(e))
+            print "exception " + str(e)
     
     def checkTaskStatusLocal(self, pids):
         '''
@@ -291,6 +362,18 @@ class backendservices():
 if __name__ == "__main__":
     pass
     obj = backendservices()
+    print "about to call executeRTaskLocal"
+    res = obj.executeRTaskLocal({
+        'model_file': '/Users/choruk/src/stochss/app/stochoptim/inst/extdata/birth_death_MAImodel.R',
+        'model_data': '/Users/choruk/src/parameter_est/birth_death_MAdata.txt'
+    })
+    print "called executeRTaskLocal"
+    print "checkTaskStatusLocal: " + str(obj.checkTaskStatusLocal([res['pid']]))
+    while (obj.checkTaskStatusLocal([res['pid']])[res['pid']] == True):
+        print "task not done"
+        time.sleep(10)
+    print "task done"
+'''
     PARAM_CREDENTIALS = 'credentials'
     PARAM_GROUP = 'group'
     PARAM_IMAGE_ID = 'image_id'
@@ -307,14 +390,15 @@ if __name__ == "__main__":
              'credentials':{"EC2_ACCESS_KEY":"AKIAJWILGFLOFVDRDRCQ", "EC2_SECRET_KEY":"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"},
              #'credentials':{"EC2_ACCESS_KEY":"sadsdsad", "EC2_SECRET_KEY":"/95VWaJ"},
              'use_spot_instances':False}
+'''
     #test  = obj.validateCredentials(params)
     #print test
     #print str(obj.startMachines(params))
-    print obj.stopMachines(params)
+#    print obj.stopMachines(params)
     #val = obj.describeMachines(params)
-    pids = [12680,12681,12682, 18526]
+#    pids = [12680,12681,12682, 18526]
     #res  = obj.checkTaskStatusLocal(pids)
-    pids = [18511,18519,19200]
+#    pids = [18511,18519,19200]
     #obj.deleteTaskLocal(pids)
     #print str(res)
     #obj.fetchOutput("2f3d86eb-9231-407d-bfd9-19010695e6a3","https://s3.amazonaws.com/78d7d1dc-0dfe-48e8-95ae-eec20d0ca346/output/2f3d86eb-9231-407d-bfd9-19010695e6a3.tar")
