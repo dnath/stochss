@@ -314,6 +314,7 @@ from handlers.updates import *
 from handlers.status import *
 from handlers.auth import *
 from handlers.admin import *
+import handlers.newModelEditor
 import handlers.fileserver
 
 # Handler to serve static files
@@ -349,6 +350,7 @@ app = webapp2.WSGIApplication([
                                ('/models/list.*', ModelBackboneInterface),
                                ('/stochkit/list.*', JobBackboneInterface),
                                ('/convert', ModelConvertPage),
+                               ('/newModelEditor/', handlers.newModelEditor.NewModelEditorPage),
                                ('/modeleditor/specieseditor', SpeciesEditorPage),
                                ('/modeleditor/reactioneditor', ReactionEditorPage),
                                ('/modeleditor/parametereditor', ParameterEditorPage),
