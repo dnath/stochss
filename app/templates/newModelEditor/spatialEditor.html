@@ -1,0 +1,89 @@
+<!-- <!DOCTYPE html> -->
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>StochSS: Stochastic Simlation Service</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <script type="text/javascript" src = "/static/js/jquery-ui-1.10.3/js/jquery-1.9.1.js"></script>
+    <script type="text/javascript" src = "/static/js/jquery-ui-1.10.3/js/jquery-ui-1.10.3.custom.js"></script>
+    <script type="text/javascript" src = "/static/js/underscore.js"></script>
+    <!--<script type="text/javascript" src = "/static/utils.js"></script>-->
+    <script type="text/javascript" src = "/static/js/backbone.js"></script>
+
+    <script type="text/x-mathjax-config">
+      MathJax.Hub.Config({
+      tex2jax: {
+      inlineMath: [["$","$"],["\\(","\\)"]]
+      }
+      });
+    </script>
+    <script type="text/javascript"
+            src="http://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS_HTML-full">
+    </script>
+
+    <script type="text/javascript" src = "/static/js/newModelEditor/spatialEditor.js"></script>
+
+    <!--<script type="text/javascript" src = "/static/js/jquery-ui-1.9.1.custom.min.js"></script>-->
+
+    <!--<link rel="stylesheet" href="/static/css/nv.d3.css">-->
+
+    <!--<script type="text/javascript" src = "/static/model/stochkit.js"></script>-->
+    <!--<script type="text/javascript" src = "/static/js/simulate.js"></script>-->
+
+    <link href="/static/bootstrap/css/bootstrap.css" rel="stylesheet">
+</head>
+  <body>
+    <div class="container" id="modelEditor">
+      <div class="panel panel-primary">
+        <div class="panel-heading">
+          Reactions & Subdomains mapping
+        </div>
+
+        <div class="panel-body">
+          <table class="table">
+            <thead>
+              <tr class="reactionSubdomainSelectTableHeader">
+              </tr>
+            </thead>
+            <tbody class="reactionSubdomainSelectTableBody">
+            </tbody>
+          </table>
+       </div>
+
+        <div class="panel-footing">
+          <div id="speciesStatusDiv">
+          </div>
+        </div>
+      </div>
+
+      <div class="panel panel-primary">
+        <div class="panel-heading">
+          Intial Conditions
+        </div>
+
+        <div class="panel-body">
+          <table class="table">
+            <thead>
+              <tr class="initialTableHeader">
+                <th>Delete</th><th>Type</th><th>Species</th>
+              </tr>
+            </thead>
+            <tbody class="initialTableBody">
+            </tbody>
+          </table>
+
+          <button type="button" class="btn btn-default btn-lg" class="addInitialConditionsButton">
+            <span class="glyphicon glyphicon-plus"></span> Add Initial Condition
+          </button>
+       </div>
+
+        <div class="panel-footing">
+          <div id="speciesStatusDiv">
+          </div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>
