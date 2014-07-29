@@ -1035,7 +1035,7 @@ if __name__ == "__main__":
     #sys.exit(0)
 
     print 'Running StochKit Tests'
-    #teststochss(backend,params)
+    teststochss(backend,params)
 
 '''
     print 'Running StochOptim Tests'

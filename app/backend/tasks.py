@@ -24,6 +24,7 @@ from datetime import datetime
 from multiprocessing import Process
 import tempfile, time
 import signal
+from google.appengine.api import backends
 
 class CelerySingleton(object):
     """
@@ -257,6 +258,7 @@ def master_task(task_id, params):
             target=poll_commands,
             args=(params["queue"],)
         )
+        
         # Need to start up another process to periodically update stdout
         # and stderr in S3 bucket.
         bucket_name = params["bucketname"]
@@ -266,7 +268,7 @@ def master_task(task_id, params):
         )
         # Construct execution string and call it
         exec_str = "{0}/{1} --model {2} --data {3}".format(
-            MCEM2_DIR,
+            MCEM2_DIR, #stochoptimum
             params["paramstring"],
             model_file_name,
             model_data_file_name
@@ -286,7 +288,8 @@ def master_task(task_id, params):
                     stdout=stdout_fh,
                     stderr=stderr_fh
                 )
-                poll_process.start()
+                poll_process.start() #poll the children for the results
+                #backends.call_background_thread(poll_commands,[params["queue"]])
                 update_process.start()
                 # Handler that should catch the first SIGTERM signal and then kill
                 # off all subprocesses

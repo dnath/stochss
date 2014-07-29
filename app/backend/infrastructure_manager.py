@@ -2,8 +2,13 @@ from agents.base_agent import BaseAgent, AgentConfigurationException, AgentRunti
 from agents.factory import InfrastructureAgentFactory
 import json
 import thread
+from time import sleep
 from utils import utils
 from utils.persistent_dictionary import PersistentStoreFactory, PersistentDictionary
+from google.appengine.api import backends
+import poll_task
+import tasks
+from celery.result import AsyncResult
 
 __author__ = 'hiranya'
 __email__ = 'hiranya@appscale.com'
@@ -58,6 +63,7 @@ class InfrastructureManager:
   # A list of parameters required to initiate a VM termination process
   TERMINATE_INSTANCES_REQUIRED_PARAMS = ( PARAM_INFRASTRUCTURE, )
 
+
   def __init__(self, params=None, blocking=False):
     """
     Create a new InfrastructureManager instance. This constructor
@@ -77,6 +83,7 @@ class InfrastructureManager:
       blocking  Whether to operate in blocking mode or not. Optional
                 and defaults to false.
     """
+    global reservations
     self.blocking = blocking
     #self.secret = utils.get_secret()
     self.agent_factory = InfrastructureAgentFactory()
@@ -86,6 +93,7 @@ class InfrastructureManager:
       self.reservations = PersistentDictionary(store)
     else:
       self.reservations = PersistentDictionary()
+
 
   def describe_instances(self, parameters, secret, prefix=''):
     """
@@ -214,6 +222,7 @@ class InfrastructureManager:
       'state': self.STATE_PENDING,
       'vm_info': None
     }
+
     self.reservations.put(reservation_id, status_info)
     utils.log('Generated reservation id {0} for this request.'.format(
       reservation_id)
@@ -222,20 +231,24 @@ class InfrastructureManager:
     # joins on all threads before returning a response from a request, which effectively makes non-
     # blocking mode the same as blocking mode anyways.
     # (see https://developers.google.com/appengine/docs/python/#Python_The_sandbox)
-    if self.blocking or True:
-      utils.log('Running spawn_vms in blocking mode')
-      result = self.__spawn_vms(agent, num_vms, parameters, reservation_id)
-      # NOTE: We will only be able to return an IP for the started instances when run in blocking
-      #       mode, but this is needed to update the queue head IP in celeryconfig.py.
-      return result # self.__generate_response(
-      #   True,
-      #   self.REASON_NONE,
-      #   {'reservation_id': reservation_id}.update(result)
-      # )
+    if self.blocking:
+        utils.log('Running spawn_vms in blocking mode')
+        result = self.__spawn_vms(agent, num_vms, parameters, reservation_id)
+        # NOTE: We will only be able to return an IP for the started instances when run in blocking
+        #       mode, but this is needed to update the queue head IP in celeryconfig.py.
+        return result # self.__generate_response(
+    #   True,
+    #   self.REASON_NONE,
+    #   {'reservation_id': reservation_id}.update(result)
+    # )
     else:
       utils.log('Running spawn_vms in non-blocking mode')
-      thread.start_new_thread(self.__spawn_vms,
-        (agent, num_vms, parameters, reservation_id))
+      # here we will run backgroung_threads
+      
+#      t = backends.call_background_thread(target=InfrastructureManager.spawn_vms, args=[reservations, agent, num_vms, parameters, reservation_id])
+#      utils.log("111111");
+
+      thread.start_new_thread(self.__spawn_vms, (agent, num_vms, parameters, reservation_id))
     utils.log('Successfully started request {0}.'.format(reservation_id))
     return self.__generate_response(True,
       self.REASON_NONE, {'reservation_id': reservation_id})
@@ -289,11 +302,12 @@ class InfrastructureManager:
       parameters      A dictionary of parameters
       reservation_id  Reservation ID of the current run request
     """
+    utils.log("HERE!!!")
     status_info = self.reservations.get(reservation_id)
     try:
       security_configured = agent.configure_instance_security(parameters)
-      instance_info = agent.run_instances(num_vms, parameters,
-        security_configured)
+      instance_info = agent.run_instances(num_vms, parameters, security_configured)
+      
       ids = instance_info[0]
       public_ips = instance_info[1]
       private_ips = instance_info[2]
@@ -308,8 +322,40 @@ class InfrastructureManager:
       status_info['state'] = self.STATE_FAILED
       status_info['reason'] = exception.message
     self.reservations.put(reservation_id, status_info)
-    return status_info
+    #return status_info
 
+  @staticmethod
+  def spawn_vms(reservations, agent, num_vms, parameters, reservation_id):
+      """
+          Private method for starting a set of VMs
+          
+          Args:
+          agent           Infrastructure agent in charge of current operation
+          num_vms         No. of VMs to be spawned
+          parameters      A dictionary of parameters
+          reservation_id  Reservation ID of the current run request
+          """
+      utils.log("HERE!!!")
+      status_info = reservations.get(reservation_id)
+      try:
+          security_configured = agent.configure_instance_security(parameters)
+          instance_info = agent.run_instances(num_vms, parameters, security_configured)
+          
+          ids = instance_info[0]
+          public_ips = instance_info[1]
+          private_ips = instance_info[2]
+          status_info['state'] = STATE_RUNNING
+          status_info['vm_info'] = {
+              'public_ips': public_ips,
+              'private_ips': private_ips,
+              'instance_ids': ids
+          }
+          utils.log('Successfully finished request {0}.'.format(reservation_id))
+      except AgentRuntimeException as exception:
+          status_info['state'] = STATE_FAILED
+          status_info['reason'] = exception.message
+      reservations.put(reservation_id, status_info)
+  #return status_info
 
   def __kill_vms(self, agent, parameters, prefix=''):
     """
