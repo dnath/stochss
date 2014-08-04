@@ -30,6 +30,7 @@ class MeshEditorPage(BaseHandler):
     def authentication_required(self):
         return True
     
+    
     def get(self):
         if True == True:
             base = os.path.dirname(os.path.realpath(__file__)) + '/../static/spatial/'
@@ -113,6 +114,13 @@ class MeshEditorPage(BaseHandler):
                 self.render_response('modeleditor/mesheditor.html', **data)
             else:
                 self.render_response('modeleditor/mesheditor.html')
+
+
+    def geomdisplay(self):
+        print "etf"
+        params = json.loads(self.request.get('data'))
+        self.response.write(json.dumps(params))
+    
 
 
     def post(self):
