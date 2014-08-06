@@ -1,0 +1,244 @@
+<!-- <!DOCTYPE html> -->
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>StochSS: Stochastic Simlation Service</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <script type="text/javascript" src = "/static/js/jquery-ui-1.10.3/js/jquery-1.9.1.js"></script>
+    <script type="text/javascript" src = "/static/js/jquery-ui-1.10.3/js/jquery-ui-1.10.3.custom.js"></script>
+    <script type="text/javascript" src = "/static/js/underscore.js"></script>
+    <!--<script type="text/javascript" src = "/static/utils.js"></script>-->
+    <script type="text/javascript" src = "/static/js/backbone.js"></script>
+
+    <script type="text/x-mathjax-config">
+      MathJax.Hub.Config({
+      tex2jax: {
+      inlineMath: [["$","$"],["\\(","\\)"]]
+      }
+      });
+    </script>
+    <script type="text/javascript"
+            src="http://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS_HTML-full">
+    </script>
+
+    <script type="text/javascript" src = "/static/js/newModelEditor/modelEditor.js"></script>
+
+    <!--<script type="text/javascript" src = "/static/js/jquery-ui-1.9.1.custom.min.js"></script>-->
+
+    <!--<link rel="stylesheet" href="/static/css/nv.d3.css">-->
+
+    <!--<script type="text/javascript" src = "/static/model/stochkit.js"></script>-->
+    <!--<script type="text/javascript" src = "/static/js/simulate.js"></script>-->
+
+    <link href="/static/bootstrap/css/bootstrap.css" rel="stylesheet">
+</head>
+  <body>
+    <div id="modelEditor">
+      <div class="panel panel-primary">
+        <div class="panel-heading">
+          Species
+        </div>
+        
+        <div class="panel-body">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Remove</th><th>Name</th><th>Initial Value</th>
+              </tr>
+            </thead>
+            <tbody id="speciesTableBody">
+            </tbody>
+          </table>
+
+          <button type="button" class="btn btn-default btn-lg" id="addSpeciesButton">
+            <span class="glyphicon glyphicon-plus"></span> Add Species
+          </button>
+       </div>
+
+        <div class="panel-footing">
+          <div id="speciesStatusDiv">
+          </div>
+        </div>
+      </div>
+
+      <div class="panel panel-primary">
+        <div class="panel-heading">
+          Reactions
+        </div>
+        
+        <div class="panel-body">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Remove</th><th>Name</th><th>Type</th><th>Edit</th>
+              </tr>
+            </thead>
+            <tbody id="reactionsTableBody">
+            </tbody>
+          </table>
+
+          <button type="button" class="btn btn-default btn-lg" id="addReactionButton">
+            <span class="glyphicon glyphicon-plus"></span> Add Reaction
+          </button>
+
+          <button type="button" class="btn btn-default btn-lg" id="addMichaelisMentonReactionButton">
+            <span class="glyphicon glyphicon-plus"></span> Add Michaelis Menton Reaction
+          </button>
+        </div>
+
+        <div class="panel" id="reactionEditorDiv">
+        </div>
+
+        <div class="panel-footing" id="reactionStatusDiv">
+        </div>
+      </div>
+    </div>
+
+    <script id="reactantsTemplate" type="text/template">
+      <div class="reactantSelector col-lg-6">
+        <div class="panel panel-primary">
+          <div class="panel-heading">
+            Species
+          </div>
+          
+          <div class="panel-body">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Remove</th><th>Name</th><th>Stoichiometry</th>
+                </tr>
+              </thead>
+              <tbody class="reactantsTableBody">
+              </tbody>
+            </table>
+
+            <button type="button" class="btn btn-default btn-lg add">
+              <span class="glyphicon glyphicon-plus"></span> Add Reactant
+            </button>
+          </div>
+
+          <div class="panel-footing">
+            <div id="reactantsStatusDiv">
+            </div>
+          </div>
+        </div>
+      </div>
+    </script>
+
+    <script id="productsTemplate" type="text/template">
+      <div class="productSelector col-lg-6">
+        <div class="panel panel-primary">
+          <div class="panel-heading">
+            Products
+          </div>
+          
+          <div class="panel-body">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Remove</th><th>Name</th><th>Stoichiometry</th>
+                </tr>
+              </thead>
+              <tbody class="productsTableBody">
+              </tbody>
+            </table>
+
+            <button type="button" class="btn btn-default btn-lg add">
+              <span class="glyphicon glyphicon-plus"></span> Add Product
+            </button>
+          </div>
+
+          <div class="panel-footing">
+            <div id="productsStatusDiv">
+            </div>
+          </div>
+        </div>
+      </div>
+    </script>
+
+    <script id="massActionTemplate" type="text/template">
+      <div class="reactantAndProductSelectDiv row">
+      </div>
+
+      <div>
+        <div class="col-md-1">Reaction Rate: </div><input class="rate">
+      </div>
+    </script>
+
+    <script id="michaelisMentonTemplate" type="text/template">
+      <div class="panel panel-primary">
+        <div class="panel-heading">
+          Michaelis Menton Editor
+        </div>
+
+        <div class="panel-body">
+          <div>
+            Select the reactant (substrate) and product of the Michaelis Menton reaction. Either of these may be left blank, indicating either an infinite supply of reactants or no product (depending on which box is selected).
+          </div>
+
+          <table class="table">
+            <thead>
+              <tr>
+                <th>
+                  Reactant
+                </th>
+                <th>
+                  Product
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>
+                  <select class="reactantSelect"></select>
+                </td>
+                <td>
+                  <select class="productSelect"></select>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          
+          <div>
+            There are two terms required for all Michaelis Menton terms, v, and Km.
+          </div>
+
+          <div>
+            <div class="col-md-1">v: </div><input class="v">
+          </div>
+
+          <div>
+            <div class="col-md-1">Km: </div><input class="Km">
+          </div>
+
+          The propensity for the reaction is written as:
+
+          <div id="preview">
+          </div>
+          
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Remove</th>
+                <th>Interaction</th>
+                <th>Species</th>
+                <th>Rate</th>
+              </tr>
+            </thead>
+            <tbody class="extraTableBody">
+            </tbody>
+          </table>
+
+          <div>
+            <button type="button" class="btn btn-default btn-lg add">
+              <span class="glyphicon glyphicon-plus"></span> Add Extra Interaction
+            </button>
+          </div>
+        </div>
+      </div>
+    </script>
+
+  </body>
+</html>
