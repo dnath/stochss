@@ -203,11 +203,18 @@ class CredentialsPage(BaseHandler):
         else:
             try:
                 service = backendservices()
-                params ={"infrastructure":"ec2",
-                     'credentials':credentials}          
+                #key_prefix = service.KEYPREFIX
+                #if "key_prefix" in params:
+                #    key_prefix = params["key_prefix"]
+                params = {
+                    "infrastructure": service.INFRA_EC2,
+                    "credentials": credentials,
+                    "key_prefix": service.KEYPREFIX + user_id
+                }
                 result = service.describeMachines(params)
                 return result
-            except:
+            except Exception as e:
+                logging.exception(e)
                 return None
                     
     def start_vms(self, user_id, credentials, number_of_vms=None):

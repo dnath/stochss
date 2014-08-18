@@ -12,6 +12,7 @@ from tasks import *
 from boto.s3.connection import S3Connection
 from celery.task.control import inspect
 import celery
+import logging
 
 class backendservices():
     ''' 
@@ -47,7 +48,7 @@ class backendservices():
         This method instantiates celery tasks in the cloud.
 	Returns return value from celery async call and the task ID
         '''
-        logging.info('inside execute task for cloud : Params - %s', str(params))
+        #logging.info('inside execute task for cloud : Params - %s', str(params))
         result = {}
         try:
             from tasks import task,updateEntry
@@ -463,6 +464,7 @@ class backendservices():
                     key_prefix = self.KEYPREFIX + key_prefix
             else:
                 key_prefix = self.KEYPREFIX
+            params["key_prefix"] = key_prefix
 
             key_name = params["keyname"]
             if not key_name.startswith(key_prefix):
@@ -475,45 +477,47 @@ class backendservices():
             res = {}
             # NOTE: We need to make sure that the RabbitMQ server is running if any compute
             # nodes are running as we are using the AMQP broker option for Celery.
-            compute_check_params = {
-                "credentials": params["credentials"],
-                "key_prefix": key_prefix
-            }
-            if self.isQueueHeadRunning(compute_check_params):
-		#Queue head is running so start as many vms as requested
-                res = i.run_instances(params,[])
-                self.copyCeleryConfigToInstance(res, params)
-                # start celery via ssh
-                self.startCeleryViaSSH(res, params)
-            else:
-                # Need to start the queue head (RabbitMQ)
-                params["queue_head"] = True
-                vms_requested = int(params["num_vms"])
-                requested_key_name = params["keyname"]
-                # Only want one queue head, and it must have its own key so
-                # it can be differentiated if necessary
-                params["num_vms"] = 1
-                params["keyname"] = requested_key_name+'-'+self.QUEUEHEAD_KEY_TAG
-                res = i.run_instances(params,[])
+#            compute_check_params = {
+#                "credentials": params["credentials"],
+#                "key_prefix": key_prefix
+#            }
 
-                #NOTE: This relies on the InfrastructureManager being run in blocking mode...
-                queue_head_ip = res["vm_info"]["public_ips"][0]
-                self.__update_celery_config_with_queue_head_ip(queue_head_ip)
-                self.copyCeleryConfigToInstance(res, params)
-                # start celery via ssh
-                self.startCeleryViaSSH(res, params)
-
-                params["keyname"] = requested_key_name
-                params["queue_head"] = False
-                if vms_requested > 1:
-                    #subtract 1 since we can use the queue head as a worker
-                    params["num_vms"] = vms_requested - 1
-                    res = i.run_instances(params,[])
-                    self.copyCeleryConfigToInstance(res, params)
-                    # start celery via ssh
-                    self.startCeleryViaSSH(res, params)
-
-                params["num_vms"] = vms_requested
+            res = i.run_instances(params,[])
+#            if self.isQueueHeadRunning(compute_check_params):
+#		#Queue head is running so start as many vms as requested
+#                res = i.run_instances(params,[])
+#                self.copyCeleryConfigToInstance(res, params)
+#                # start celery via ssh
+#                self.startCeleryViaSSH(res, params)
+#            else:
+#                # Need to start the queue head (RabbitMQ)
+#                params["queue_head"] = True
+#                vms_requested = int(params["num_vms"])
+#                requested_key_name = params["keyname"]
+#                # Only want one queue head, and it must have its own key so
+#                # it can be differentiated if necessary
+#                params["num_vms"] = 1
+#                params["keyname"] = requested_key_name+'-'+self.QUEUEHEAD_KEY_TAG
+#                res = i.run_instances(params,[])
+#
+#                #NOTE: This relies on the InfrastructureManager being run in blocking mode...
+#                queue_head_ip = res["vm_info"]["public_ips"][0]
+#                self.__update_celery_config_with_queue_head_ip(queue_head_ip)
+#                self.copyCeleryConfigToInstance(res, params)
+#                # start celery via ssh
+#                self.startCeleryViaSSH(res, params)
+#
+#                params["keyname"] = requested_key_name
+#                params["queue_head"] = False
+#                if vms_requested > 1:
+#                    #subtract 1 since we can use the queue head as a worker
+#                    params["num_vms"] = vms_requested - 1
+#                    res = i.run_instances(params,[])
+#                    self.copyCeleryConfigToInstance(res, params)
+#                    # start celery via ssh
+#                    self.startCeleryViaSSH(res, params)
+#
+#                params["num_vms"] = vms_requested
 
             logging.info("startMachines : exiting method with result : %s", str(res))
             return res
@@ -751,7 +755,7 @@ class backendservices():
             logging.error("fetchOutput : exiting with error : %s", str(e))
             return False
     
-    def __update_celery_config_with_queue_head_ip(self, queue_head_ip):
+    def update_celery_config_with_queue_head_ip(self, queue_head_ip):
         # Write queue_head_ip to file on the appropriate line
         celery_config_filename = os.path.join(
             os.path.dirname(os.path.abspath(__file__)),

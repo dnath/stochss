@@ -164,6 +164,7 @@ def get_hostname(backend=None, instance=None):
       raise InvalidInstanceError('instance must be an integer.')
 
 
+  return _get_dev2_hostname(backend, instance)
   if _is_dev2_environment():
     return _get_dev2_hostname(backend, instance)
   elif _is_dev_environment():

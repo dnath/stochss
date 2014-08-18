@@ -4,12 +4,14 @@ import json
 import thread
 from utils import utils
 from utils.persistent_dictionary import PersistentStoreFactory, PersistentDictionary
-import backend_handler
+#import backend_handler
 from google.appengine.api import background_thread, backends, urlfetch
 from google.appengine.api import taskqueue
 import pickle
 import re
 import urllib
+import logging
+import os
 
 __author__ = 'hiranya'
 __email__ = 'hiranya@appscale.com'
@@ -63,6 +65,12 @@ class InfrastructureManager:
 
   # A list of parameters required to initiate a VM termination process
   TERMINATE_INSTANCES_REQUIRED_PARAMS = ( PARAM_INFRASTRUCTURE, )
+
+  # Parameters necessary to start the backend
+  BACKEND_NAME = 'backendthread'
+  BACKEND_START = '/_ah/start'
+  BACKEND_WORKER_R_URL = '/backend/worker'
+  BACKEND_MANAGER_R_URL = '/backend/manager'
 
   def __init__(self, params=None, blocking=False):
     """
@@ -241,17 +249,19 @@ class InfrastructureManager:
     else:
       utils.log('Running spawn_vms in non-blocking mode')
 #        thread.start_new_thread(__spawn_vms, (infra, agent, num_vms, parameters, reservation_id))
-      backend_url = backends.get_url(backend_handler.BACKEND_NAME)
+      logging.info("ENV[SERVER_SOFTWARE]={0}".format(os.environ.get('SERVER_SOFTWARE', '')))
+      backend_url = backends.get_url(self.BACKEND_NAME)
+      logging.info('backend_url = {0}'.format(backend_url))
       # start GAE backends
-      backend_start_url =  backend_url + backend_handler.BACKEND_START
+      backend_start_url =  backend_url + self.BACKEND_START
       urlfetch.fetch(backend_start_url)
           
       # start backend server manager
-      backend_manager_url =  backend_url + backend_handler.BACKEND_MANAGER_R_URL
+      backend_manager_url =  backend_url + self.BACKEND_MANAGER_R_URL
       urlfetch.fetch(backend_manager_url)
           
       # let backend worker to spawn vms with background thread
-      backend_worker_url = backend_url + backend_handler.BACKEND_WORKER_R_URL
+      backend_worker_url = backend_url + self.BACKEND_WORKER_R_URL
       form_fields = {
             'op': 'start_vms',
             'infra': pickle.dumps(self),
