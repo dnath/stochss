@@ -95,26 +95,32 @@ function check_pyurdme {
 }
 
 function download_pyurdme {
-    ZIP_URL="https://github.com/pyurdme/pyurdme/archive/stochss.zip"
-    TMPDIR=$(mktemp -d /tmp/tmp.XXXXXX)
-    ZIP_FILE="$TMPDIR/pyurdme.zip"
-    CMD="curl -o $ZIP_FILE -L $ZIP_URL"
-    echo $CMD
-    eval $CMD
-    if [[ -e "$ZIP_FILE" ]];then
-        cd "$STOCHSS_HOME/app/lib" || return 1
-        pwd
-        CMD="unzip $ZIP_FILE > /dev/null"
-        echo $CMD
-        eval $CMD
-        if [[ $? != 0 ]];then
-            rm $ZIP_FILE
-            return 1 #False
-        fi
-        rm $ZIP_FILE
+    DIRECTORY="$STOCHSS_HOME/app/lib/pyurdme-stochss"
+    if [ -d "$DIRECTORY" ]; then
+        echo "$DIRECTORY found, pyurdme already downloaded locally (remove directory to re-download)"
         return 0 #True
     else
-        return 1 #False
+        ZIP_URL="https://github.com/pyurdme/pyurdme/archive/stochss.zip"
+        TMPDIR=$(mktemp -d /tmp/tmp.XXXXXX)
+        ZIP_FILE="$TMPDIR/pyurdme.zip"
+        CMD="curl -o $ZIP_FILE -L $ZIP_URL"
+        echo $CMD
+        eval $CMD
+        if [[ -e "$ZIP_FILE" ]];then
+            cd "$STOCHSS_HOME/app/lib" || return 1
+            pwd
+            CMD="unzip $ZIP_FILE > /dev/null"
+            echo $CMD
+            eval $CMD
+            if [[ $? != 0 ]];then
+                rm $ZIP_FILE
+                return 1 #False
+            fi
+            rm $ZIP_FILE
+            return 0 #True
+        else
+            return 1 #False
+        fi
     fi
 }
 
@@ -252,6 +258,7 @@ function check_spatial_installation {
             echo "H5py detected sucessfully.<br />"
         else
             echo "H5py not installed, Failing<br />"
+            return 1 #False
         fi
     fi
 
