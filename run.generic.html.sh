@@ -225,7 +225,9 @@ function check_spatial_installation {
         echo "Numpy and Scipy detected successfully.<br />"
     else
         echo "Numpy and Scipy not installed, attempting install<br />"
-        if !check_pip;then
+        if check_pip;then
+            echo ""
+        else
             install_pip
         fi
         install_numpy_scipy 
@@ -240,7 +242,9 @@ function check_spatial_installation {
     if check_h5py;then
         echo "H5py detected sucessfully.<br />"
     else
-        if !check_pip;then
+        if check_pip;then
+            echo ""
+        else
             install_pip
         fi
         install_h5py
