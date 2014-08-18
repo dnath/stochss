@@ -133,7 +133,8 @@ function check_numpy_scipy {
 }
 
 function install_numpy_scipy {
-    echo "We need to install the python packages: numpy, scipy and matplotlib from http://fonnesbeck.github.io/ScipySuperpack/ "
+    #echo "We need to install the python packages: numpy, scipy and matplotlib from http://fonnesbeck.github.io/ScipySuperpack/ "
+    echo "We need to install the python packages: numpy, scipy and matplotlib from pip repository. "
     read -p "Do you want me to try to use sudo to install required packages [you may be prompted for the admin password] (y/n): " answer
 
     if [ $? != 0 ]; then
@@ -141,10 +142,13 @@ function install_numpy_scipy {
     fi
 
     if [ "$answer" == 'y' ] || [ "$answer" == 'yes' ]; then
-        CMD="curl -o install_superpack.sh https://raw.githubusercontent.com/fonnesbeck/ScipySuperpack/master/install_superpack.sh"
-        echo $CMD
-        eval $CMD
-        CMD="sh install_superpack.sh"
+        #CMD="curl -o install_superpack.sh https://raw.githubusercontent.com/fonnesbeck/ScipySuperpack/master/install_superpack.sh"
+        #echo $CMD
+        #eval $CMD
+        #CMD="sh install_superpack.sh"
+        #echo $CMD
+        #eval $CMD
+        CMD="sudo pip install numpy scipy matplotlib"
         echo $CMD
         eval $CMD
     else
@@ -221,6 +225,9 @@ function check_spatial_installation {
         echo "Numpy and Scipy detected successfully.<br />"
     else
         echo "Numpy and Scipy not installed, attempting install<br />"
+        if !check_pip;then
+            install_pip
+        fi
         install_numpy_scipy 
         if check_numpy_scipy; then
             echo "Numpy and Scipy detected successfully.<br />"
