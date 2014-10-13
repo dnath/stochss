@@ -15,6 +15,7 @@ from stochssapp import BaseHandler
 from stochss.model import *
 from stochss.stochkit import *
 from stochss.examplemodels import *
+import stochss.converter
 
 import webapp2
 import exportimport
@@ -590,7 +591,8 @@ class ModelEditorPage(BaseHandler):
           return {'status': False, 'msg': 'Model name is missing.'}
 
         if not units:
-          return {'status': False, 'msg': 'Units are missing.'}
+          units = 'population'
+          #return {'status': False, 'msg': 'Units are missing.'}
 
         isSpatial = bool(self.request.get('spatial_type').strip().lower())
 
@@ -660,7 +662,42 @@ class ModelEditorImportFromFilePage(BaseHandler):
         
         logging.debug("file_name: " + file_data.filename)
         
-        return do_import(self, name)        
+        return do_import(self, name, from_what = 'file')        
+
+class ModelEditorImportFromSBMLPage(BaseHandler):
+    
+    def authentication_required(self):
+        return True
+        
+    def get(self):
+        self.render_response('modeleditor/importsbmlfile.html')
+        
+    def post(self):
+        print "HEY GUYS RIGHT HERE LOOK LOOK"
+        result = self.import_model()
+        template_file = 'modeleditor/importsbmlfile.html'
+        # The template file may refer to modeleditor.html for some cases.
+        if 'template_file' in result:
+            template_file = result['template_file']
+        self.render_response(template_file, **result)
+        
+    def import_model(self):
+        name = self.request.get('name').strip()
+
+        if not re.match('^[a-zA-Z0-9_]+$', name):
+            return {'status': False, 'msg': 'Model name must be alphanumeric characters and underscores only'}
+
+        if not name:
+            return {'status': False, 'msg': 'Model name is missing.'}
+        
+        file_data = self.request.POST['model_file']
+        
+        if file_data == "":
+            return {'status': False, 'msg': 'No file was chosen to import.'}
+        
+        logging.debug("file_name: " + file_data.filename)
+        
+        return do_import(self, name, from_what = 'sbml')
 
 class ModelEditorImportFromLibrary(BaseHandler):
         
@@ -704,7 +741,7 @@ class ModelEditorImportFromLibrary(BaseHandler):
             return {'status': False, 'msg': 'Model name is missing.'}
         
         model_class = self.request.get('model_class')
-        return do_import(self, name, False, model_class)
+        return do_import(self, name, from_what = 'db', model_class = model_class)
 
     def preview_model(self):
         name = self.request.get('toPreview')
@@ -793,7 +830,7 @@ def get_model_from_file(name, file):
        
     return model
 
-def do_import(handler, name, from_file = True, model_class=""):
+def do_import(handler, name, from_what, model_class=""):
     """
         Helper function to import models from file / library.
         """
@@ -804,7 +841,7 @@ def do_import(handler, name, from_file = True, model_class=""):
         if db_model is not None:
             return {'status': False, 'msg': 'A Model already exists by that name.'}
         
-        if from_file:
+        if from_what == 'file':
             doc = StochMLDocument.fromFile(handler.request.POST['model_file'].file)
             model = doc.toModel(name)
         
@@ -822,7 +859,18 @@ def do_import(handler, name, from_file = True, model_class=""):
             # Save the model to the datastore.
             model.name = name
             save_model(model, name, user_id, isSpatial = False)
-        else:
+        elif from_what == 'sbml':
+            model = stochss.converter.convert(handler.request.POST['model_file'].file.read(), name)
+        
+            # For the model to display and function properly in the UI, we need to make sure that all
+            # the parameters have been resolved to scalar values.
+            model.resolveParameters()
+            
+            # Save the model to the datastore.
+            model.name = name
+
+            save_model(model, name, user_id, isSpatial = False)
+        elif from_what == 'db':
             model = db.GqlQuery("SELECT * FROM StochKitModelWrapper WHERE is_public = :1 AND model_name = :2", True, model_class).get()
 
             jsonModel = { "name" : name }

@@ -3,8 +3,9 @@ import model
 import os
 import stochkit
 
-def convert(filename, modelName = None):
-    document = libsbml.readSBML(filename)
+def convert(xmlStr, modelName = None):
+    reader = libsbml.SBMLReader()
+    document = reader.readSBMLFromString(xmlStr)
 
     if document.getNumErrors() > 0:
         raise "More than zero errors in the model"
@@ -28,7 +29,6 @@ def convert(filename, modelName = None):
     for i in range(model.getNumParameters()):
         parameter=model.getParameter(i)
         name=parameter.getId()
-        parameterNames+=name+','
         value=parameter.getValue()
 
         stochssParameter = stochkit.Parameter(name = name, expression = value)
