@@ -65,22 +65,22 @@ ModelEditor.Controller = Backbone.View.extend(
             //this.on('select', _.bind(this.select, this) );
             this.currentReaction = null;
 
-            // Draw a screen so folks have something to see
-            this.render();
-
             // Go off and fetch those models and queue up a render on completion
-            //this.models = new stochkit.ModelCollection();
-
-            // Go get the csvFiles we have hosted
-            //this.initialDataFiles = new fileserver.FileList( [], { key : 'stochOptimInitialData' } );
+            this.models = new stochkit.ModelCollection();
 
             $( '.initialData' ).hide();
             $( '.trajectories' ).hide();
 
-            // When finished, queue up another render
-            //this.models.fetch( { success : _.bind(this.render, this) } );
+            // When finished, queue up a render so folks have something to see
+            this.model = new stochkit.Model({ id : this.attributes.id });
+            this.model.urlRoot = "/models/list";
+            this.model.fetch({ success : _.bind(this.render, this),
+                               error : _.bind(this.modelDownloadError, this) } );
+        },
 
-            //this.initialDataFiles.fetch( { success : _.bind(this.render, this) } );
+        modelDownloadError : function(model, response, options)
+        {
+            // Make a valid error here
         },
 
         addSpeciesDom : function(specieHandle, model)
@@ -90,7 +90,7 @@ ModelEditor.Controller = Backbone.View.extend(
             var specieTableTemplate =
 "<tr> \
   <td> \
-    <button type=\"button\" class=\"btn btn-default btn-lg delete\"> \
+    <button type=\"button\" class=\"btn btn-default delete\"> \
       <span class=\"glyphicon glyphicon-remove\"></span> \
     </button> \
   </td> \
@@ -305,7 +305,7 @@ ModelEditor.Controller = Backbone.View.extend(
             var reactionsTableTemplate =
 "<tr> \
   <td> \
-    <button type=\"button\" class=\"btn btn-default btn-lg delete\"> \
+    <button type=\"button\" class=\"btn btn-default delete\"> \
       <span class=\"glyphicon glyphicon-remove\"></span> \
     </button> \
   </td> \
@@ -316,7 +316,7 @@ ModelEditor.Controller = Backbone.View.extend(
     <span class=\"type\"></span> \
   </td> \
   <td> \
-    <button type=\"button\" class=\"btn btn-default btn-lg edit\"> \
+    <button type=\"button\" class=\"btn btn-default edit\"> \
       <span class=\"glyphicon glyphicon-wrench\"></span>\
     </button> \
   </td> \
@@ -639,7 +639,7 @@ ModelEditor.Controller = Backbone.View.extend(
             // Add row DOM (with species selector and stoichiometry)
             var reactantProductRowDOM = "<tr> \
 <td> \
-<button type=\"button\" class=\"btn btn-default btn-lg delete\"> \
+<button type=\"button\" class=\"btn btn-default delete\"> \
 <span class=\"glyphicon glyphicon-remove\"></span> \
 </button> \
 </td> \
@@ -774,7 +774,7 @@ ModelEditor.Controller = Backbone.View.extend(
             // Add row DOM (with species selector and stoichiometry)
             var reactantProductRowDOM = "<tr> \
 <td> \
-<button type=\"button\" class=\"btn btn-default btn-lg delete\"> \
+<button type=\"button\" class=\"btn btn-default delete\"> \
 <span class=\"glyphicon glyphicon-remove\"></span> \
 </button> \
 </td> \
@@ -897,7 +897,7 @@ ModelEditor.Controller = Backbone.View.extend(
             // Add row DOM (with species selector and stoichiometry)
             var extraRowDOM = "<tr> \
 <td> \
-<button type=\"button\" class=\"btn btn-default btn-lg delete\"> \
+<button type=\"button\" class=\"btn btn-default delete\"> \
 <span class=\"glyphicon glyphicon-remove\"></span> \
 </button> \
 </td> \
@@ -1352,7 +1352,8 @@ ModelEditor.Controller = Backbone.View.extend(
         // It is the responsibility of all the little elements to add event handlers and such to keep themselves updated
         render : function()
         {
-            var model = this.attributes.m;
+            // Convert XML to custom internal format
+            var model = this.model;
 
             for(var specieName in model.species)
             {
@@ -1377,22 +1378,8 @@ ModelEditor.Controller = Backbone.View.extend(
     }
 );
 
-var run = function()
-{
-    
-    // This is where most of the miscellaneous junk should go
-    var control = new ModelEditor.Controller( { m : modelData } );
-    
-    // Get the ball rolling
-    //modelCollection.fetch({ success : function(modelSelect) {
-    //    $( '#modelSelect' ).trigger('change');
-    //} });
-}
-
 $( document ).ready( function() {
-    //loadTemplate("speciesEditorTemplate", "/model/speciesEditor.html");
-    //loadTemplate("parameterEditorTemplate", "/model/parameterEditor.html");
-    //loadTemplate("reactionEditorTemplate", "/model/reactionEditor.html");
+    var id = $.url().param("id");
 
-    run();
+    var control = new ModelEditor.Controller( { id : id } );
 });

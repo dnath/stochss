@@ -13,9 +13,9 @@ stochkit.Model = Backbone.Model.extend( {
         {
             this.dom = XML( '<Model />' );
 
-            if(!_.has(attributes, 'units') || (attributes.units.toLowerCase() != 'population' && attributes.units.toLowerCase() != 'concentration')) {
+            /*if(!_.has(attributes, 'units') || (attributes.units.toLowerCase() != 'population' && attributes.units.toLowerCase() != 'concentration')) {
                 throw "stochkit.Model must be initialized with type == 'population' or 'concentration', I.E. stochkit.Model({ type : 'population' })"
-            }
+            }*/
             
             this.desc = XML( '<Description />' ).appendTo(this.dom);
             this.NumberOfReactions = XML( '<NumberOfReactions />' ).appendTo(this.dom);

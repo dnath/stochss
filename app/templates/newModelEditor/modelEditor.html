@@ -11,6 +11,8 @@
     <script type="text/javascript" src = "/static/js/underscore.js"></script>
     <!--<script type="text/javascript" src = "/static/utils.js"></script>-->
     <script type="text/javascript" src = "/static/js/backbone.js"></script>
+    <script type="text/javascript" src = "/static/js/purl.js"></script>
+    <script type="text/javascript" src = "/static/model/stochkit.js"></script>
 
     <script type="text/x-mathjax-config">
       MathJax.Hub.Config({
@@ -52,7 +54,7 @@
             </tbody>
           </table>
 
-          <button type="button" class="btn btn-default btn-lg" id="addSpeciesButton">
+          <button type="button" class="btn btn-default" id="addSpeciesButton">
             <span class="glyphicon glyphicon-plus"></span> Add Species
           </button>
        </div>
@@ -79,11 +81,11 @@
             </tbody>
           </table>
 
-          <button type="button" class="btn btn-default btn-lg" id="addReactionButton">
+          <button type="button" class="btn btn-default" id="addReactionButton">
             <span class="glyphicon glyphicon-plus"></span> Add Reaction
           </button>
 
-          <button type="button" class="btn btn-default btn-lg" id="addMichaelisMentonReactionButton">
+          <button type="button" class="btn btn-default" id="addMichaelisMentonReactionButton">
             <span class="glyphicon glyphicon-plus"></span> Add Michaelis Menton Reaction
           </button>
         </div>
@@ -114,7 +116,7 @@
               </tbody>
             </table>
 
-            <button type="button" class="btn btn-default btn-lg add">
+            <button type="button" class="btn btn-default add">
               <span class="glyphicon glyphicon-plus"></span> Add Reactant
             </button>
           </div>
@@ -145,7 +147,7 @@
               </tbody>
             </table>
 
-            <button type="button" class="btn btn-default btn-lg add">
+            <button type="button" class="btn btn-default add">
               <span class="glyphicon glyphicon-plus"></span> Add Product
             </button>
           </div>
@@ -232,7 +234,7 @@
           </table>
 
           <div>
-            <button type="button" class="btn btn-default btn-lg add">
+            <button type="button" class="btn btn-default add">
               <span class="glyphicon glyphicon-plus"></span> Add Extra Interaction
             </button>
           </div>
