@@ -1,3 +1,4 @@
+import logging
 try:
   import json
 except ImportError:
@@ -5,8 +6,8 @@ except ImportError:
 from google.appengine.ext import db
 import pickle
 import traceback
+import re
 import random
-import logging
 import time
 from google.appengine.api import users
 
@@ -14,8 +15,10 @@ from stochssapp import BaseHandler
 from stochss.model import *
 from stochss.stochkit import *
 from stochss.examplemodels import *
+import stochss.converter
 
 import webapp2
+import exportimport
 
 class ObjectProperty(db.Property):
     """  A db property to store objects. """
@@ -41,31 +44,42 @@ class StochKitModelWrapper(db.Model):
     user_id = db.StringProperty()
     model_name = db.StringProperty()    
     model = ObjectProperty()
-    attributes = ObjectProperty()
+    isSpatial = db.BooleanProperty()
+    spatial = ObjectProperty()
+    zipFileName = db.StringProperty()
+    # This object will look like:
+    # { spatialMeshId : id for Fileserver object of mesh
+    #   speciesSubdomains : map of species ids to lists of subdomains they are involved in
+    #   
     is_public = db.BooleanProperty()
+
+    def delete(self):
+        if self.zipFileName:
+            if os.path.exists(self.zipFileName):
+                os.remove(self.zipFileName)
+
+        super(StochKitModelWrapper, self).delete()
 
 class ModelManager():
     @staticmethod
     def getModels(handler, modelAsString = True):
-        models = db.GqlQuery("SELECT * FROM StochKitModelWrapper WHERE user_id = :1", handler.user.user_id()).fetch(100000)
+        models = db.GqlQuery("SELECT * FROM StochKitModelWrapper WHERE user_id = :1", handler.user.user_id()).run()
 
         output = []
 
         for model in models:
-            print model.model_name
             jsonModel = { "name" : model.model_name }
-            if model.attributes:
-                jsonModel.update(model.attributes)
             jsonModel["id"] = model.key().id()
-                          
-            print model.model.units
+
             jsonModel["units"] = model.model.units
             if modelAsString:
                 jsonModel["model"] = model.model.serialize()
             else:
                 jsonModel["model"] = model.model
 
-            #print jsonModel
+            jsonModel["isSpatial"] = model.isSpatial
+            jsonModel["spatial"] = model.spatial
+            jsonModel["is_public"] = model.is_public
 
             output.append(jsonModel)
 
@@ -77,9 +91,6 @@ class ModelManager():
 
         jsonModel = { "name" : model.model_name }
 
-        if model.attributes:
-            jsonModel.update(model.attributes)
-
         jsonModel["id"] = model.key().id()
                       
         jsonModel["units"] = model.model.units
@@ -87,32 +98,53 @@ class ModelManager():
             jsonModel["model"] = model.model.serialize()
         else:
             jsonModel["model"] = model.model
+
+        jsonModel["isSpatial"] = model.isSpatial
+        jsonModel["spatial"] = model.spatial
+        jsonModel["is_public"] = model.is_public
             
         return jsonModel
 
     @staticmethod
-    def getModelByName(handler, modelName, modelAsString = True):
-        model = db.GqlQuery("SELECT * FROM StochKitModelWrapper WHERE user_id = :1 AND model_name = :2", handler.user.user_id(), modelName).get()
+    def getModelByName(handler, modelName, modelAsString = True, user_id = None):
+        if not user_id:
+            user_id = handler.user.user_id()
+
+        model = db.GqlQuery("SELECT * FROM StochKitModelWrapper WHERE user_id = :1 AND model_name = :2", user_id, modelName).get()
 
         if model == None:
             return None
 
         jsonModel = { "id" : model.key().id(),
                       "name" : model.model_name }
-        if model.attributes:
-            jsonModel.update(model.attributes)
+
         jsonModel["units"] = model.model.units
         if modelAsString == True:
             jsonModel["model"] = model.model.serialize()
         else:
             jsonModel["model"] = model.model
             
+        jsonModel["isSpatial"] = model.isSpatial
+        jsonModel["spatial"] = model.spatial
+        jsonModel["is_public"] = model.is_public
+
         return jsonModel
 
     @staticmethod
     def createModel(handler, model, modelAsString = True, rename = None):
-
         userID = None
+
+        if 'isSpatial' not in model:
+            model['isSpatial'] = False
+            model['spatial'] = { 'subdomains' : [],
+                                 'mesh_wrapper_id' : None,
+                                 'species_diffusion_coefficients' : {} ,
+                                 'species_subdomain_assignments' : {} ,
+                                 'reactions_subdomain_assignments' : {},
+                                 'initial_conditions' : {} }
+
+        if 'is_public' not in model:
+            model['is_public'] = False
 
         if 'user_id' in model:
             userID = model['user_id']
@@ -141,6 +173,11 @@ class ModelManager():
         else:
             name = "tmpname"
 
+        if 'isSpatial' in model:
+            modelWrap.isSpatial = model['isSpatial']
+        if 'spatial' in model:
+            modelWrap.spatial = model['spatial']
+
         modelWrap.model_name = name
         if modelAsString:
             modelWrap.model = StochMLDocument.fromString(model["model"]).toModel(name)
@@ -149,14 +186,12 @@ class ModelManager():
             modelWrap.model = model["model"]
         modelWrap.model.units = model["units"]
 
-        attributes = {}
-        for key in model:
-            if key != "model" and key != "units" and key != "name":
-                attributes[key] = model[key]
-
-        modelWrap.attributes = attributes
+        modelWrap.spatial = model["spatial"]
+        modelWrap.isSpatial = model["isSpatial"]
+        modelWrap.is_public = model["is_public"]
 
         modelWrap.user_id = userID
+        print "createModel(): modelWrap= {0}".format(modelWrap)
         return modelWrap.put().id()
 
     @staticmethod
@@ -177,13 +212,9 @@ class ModelManager():
         modelWrap.model_name = name
         modelWrap.model = StochMLDocument.fromString(model["model"]).toModel(name)
         modelWrap.model.units = model["units"]
-
-        attributes = {}
-        for key in model:
-            if key != "model" and key != "units" and key != "name":
-                attributes[key] = model[key]
-
-        modelWrap.attributes = attributes
+        modelWrap.spatial = model["spatial"]
+        modelWrap.isSpatial = model["isSpatial"]
+        modelWrap.is_public = model["is_public"]
 
         return modelWrap.put().id()
 
@@ -255,7 +286,32 @@ class ModelEditorPage(BaseHandler):
         #    if db_model is not None:
         #        self.set_session_property('model_edited', db_model.model)
 
-        if self.request.get('duplicate'):
+        if self.request.get('convertModelToSpatial'):
+            modelName = self.request.get('convertModelToSpatial')
+            jsonModel = ModelManager.getModelByName(self, modelName)
+            del jsonModel["id"]
+
+            newName = modelName + '_spatial_' + ''.join(random.choice('abcdeABCDE1234567890') for x in range(3))
+            while ModelManager.getModelByName(self, newName) != None:
+                newName = modelName + '_' + ''.join(random.choice('abcdeABCDE1234567890') for x in range(3))
+
+            jsonModel["name"] = newName
+            jsonModel['isSpatial'] = True
+            jsonModel['spatial'] = { 'subdomains' : [],
+                                     'mesh_wrapper_id' : None,
+                                     'species_diffusion_coefficients' : {} ,
+                                     'species_subdomain_assignments' : {} ,
+                                     'reactions_subdomain_assignments' : {},
+                                     'initial_conditions' : {} }
+
+            self.response.content_type = "application/json"
+            if ModelManager.createModel(self, jsonModel):
+                self.response.write(json.dumps(newName))
+            else:
+                self.response.write(json.dumps(''))
+
+            return
+        elif self.request.get('duplicate'):
             modelName = self.request.get('duplicate')
             jsonModel = ModelManager.getModelByName(self, modelName)
             del jsonModel["id"]
@@ -273,7 +329,31 @@ class ModelEditorPage(BaseHandler):
                 self.response.write(json.dumps(''))
 
             return
-        if self.request.get('rename'):
+        elif self.request.get('exportToZip'):
+            model_edited = self.get_session_property('model_edited')
+
+            model = db.GqlQuery("SELECT * FROM StochKitModelWrapper WHERE user_id = :1 AND model_name = :2", self.user.user_id(), model_edited.name).get()
+
+            if not model.zipFileName:
+                szip = exportimport.SuperZip(os.path.abspath(os.path.dirname(__file__) + '/../static/tmp/'), preferredName = model.model_name + "_")
+                
+                model.zipFileName = szip.getFileName()
+
+                szip.addStochKitModel(model)
+                
+                szip.close()
+
+                # Save the updated status
+                model.put()
+            
+            relpath = '/' + os.path.relpath(model.zipFileName, os.path.abspath(os.path.dirname(__file__) + '/../'))
+
+            self.response.headers['Content-Type'] = 'application/json'
+            self.response.write(json.dumps({ 'status' : True,
+                                             'msg' : 'Model prepared',
+                                             'url' : relpath }))
+            return
+        elif self.request.get('rename'):
             modelName = self.request.get('rename')
             jsonModel = ModelManager.getModelByName(self, modelName)
 
@@ -294,17 +374,21 @@ class ModelEditorPage(BaseHandler):
                 self.response.write(json.dumps({ "status": False, "msg" : 'Failed to rename model' }))
 
             return
-        if self.request.get('export'):
+        elif self.request.get('export'):
             modelName = self.request.get('export')
             #model = ModelManager.getModelByName(self, modelName)
-            db_model = db.GqlQuery("SELECT * FROM StochKitModelWrapper WHERE user_id = :1 AND model_name = :2", self.user.user_id(), modelName).get()
-            model = db_model.model
+            jsonModel = ModelManager.getModelByName(self, modelName)
+            del jsonModel["id"]
 
             newName = self.request.get('newName').strip(' \t')
-            newModel = db.GqlQuery("SELECT * FROM StochKitModelWrapper WHERE is_public = :1 AND model_name = :2", True, newName).get()
 
-            if newModel is None:
-                save_model(model,newName,"",True)
+            jsonModel["user_id"] = ''
+            jsonModel["name"] = newName
+            jsonModel["is_public"] = True
+
+            if ModelManager.getModelByName(self, newName) is None:
+                ModelManager.createModel(self, jsonModel)
+                #save_model(model, newName, "", isSpatial = False, is_public = True)
                 self.response.content_type = "application/json"
                 self.response.write(json.dumps('success'))
             else:
@@ -322,8 +406,26 @@ class ModelEditorPage(BaseHandler):
         else:
             result = {}
 
-        models = get_all_models(self)
-        result.update({ "all_models" : map(lambda x : { "name" : x.name, "units" : x.units }, models) })
+        isSpatial = False
+
+        db_models = db.GqlQuery("SELECT * FROM StochKitModelWrapper WHERE user_id = :1", self.user.user_id())
+
+        model_edited = self.get_session_property('model_edited')
+        if model_edited == None:
+            isSpatial = False
+        else:
+            row = db.GqlQuery("SELECT * FROM StochKitModelWrapper WHERE user_id = :1 AND model_name = :2", self.user.user_id(), model_edited.name).get()
+
+            if row is None:
+                isSpatial = False
+            else:
+                isSpatial = row.isSpatial
+
+        all_models = []
+        for row in db_models:
+            all_models.append({ "name" : row.model.name, "units" : row.model.units, "isSpatial" : row.isSpatial, "spatial" : row.spatial }) 
+
+        result.update({ "all_models" : all_models, "isSpatial" : isSpatial  })
 
         self.render_response('modeleditor.html', **result)
 
@@ -342,8 +444,17 @@ class ModelEditorPage(BaseHandler):
         else:
             result = self.create_model()
 
-        models = get_all_models(self)
-        result.update({ "all_models" : map(lambda x : { "name" : x.name, "units" : x.units }, models) })
+        db_models = db.GqlQuery("SELECT * FROM StochKitModelWrapper WHERE user_id = :1", self.user.user_id())
+        
+        all_models = []
+        isSpatial = False
+        model_edited = self.get_session_property('model_edited')
+        for row in db_models:
+            if model_edited is not None and model_edited.name == row.model.name:
+                isSpatial = row.isSpatial
+            all_models.append({ "name" : row.model.name, "units" : row.model.units, "isSpatial" : row.isSpatial, "spatial" : row.spatial }) 
+        
+        result.update({ "all_models" : all_models, "isSpatial" : isSpatial   })
 
         print "post", result
 
@@ -480,7 +591,10 @@ class ModelEditorPage(BaseHandler):
           return {'status': False, 'msg': 'Model name is missing.'}
 
         if not units:
-          return {'status': False, 'msg': 'Units are missing.'}
+          units = 'population'
+          #return {'status': False, 'msg': 'Units are missing.'}
+
+        isSpatial = bool(self.request.get('spatial_type').strip().lower())
 
         model = StochKitModel(name)
         try:
@@ -495,7 +609,7 @@ class ModelEditorPage(BaseHandler):
           if db_model is not None:
               return {'status': False, 'msg': 'A Model already exists by that name.', 'name': name}
           
-          save_model(model, name, user_id)
+          save_model(model, name, user_id, isSpatial)
           
           # Also add the model name to cache.
           add_model_to_cache(self, name)
@@ -548,7 +662,42 @@ class ModelEditorImportFromFilePage(BaseHandler):
         
         logging.debug("file_name: " + file_data.filename)
         
-        return do_import(self, name)        
+        return do_import(self, name, from_what = 'file')        
+
+class ModelEditorImportFromSBMLPage(BaseHandler):
+    
+    def authentication_required(self):
+        return True
+        
+    def get(self):
+        self.render_response('modeleditor/importsbmlfile.html')
+        
+    def post(self):
+        print "HEY GUYS RIGHT HERE LOOK LOOK"
+        result = self.import_model()
+        template_file = 'modeleditor/importsbmlfile.html'
+        # The template file may refer to modeleditor.html for some cases.
+        if 'template_file' in result:
+            template_file = result['template_file']
+        self.render_response(template_file, **result)
+        
+    def import_model(self):
+        name = self.request.get('name').strip()
+
+        if not re.match('^[a-zA-Z0-9_]+$', name):
+            return {'status': False, 'msg': 'Model name must be alphanumeric characters and underscores only'}
+
+        if not name:
+            return {'status': False, 'msg': 'Model name is missing.'}
+        
+        file_data = self.request.POST['model_file']
+        
+        if file_data == "":
+            return {'status': False, 'msg': 'No file was chosen to import.'}
+        
+        logging.debug("file_name: " + file_data.filename)
+        
+        return do_import(self, name, from_what = 'sbml')
 
 class ModelEditorImportFromLibrary(BaseHandler):
         
@@ -592,7 +741,7 @@ class ModelEditorImportFromLibrary(BaseHandler):
             return {'status': False, 'msg': 'Model name is missing.'}
         
         model_class = self.request.get('model_class')
-        return do_import(self, name, False, model_class)
+        return do_import(self, name, from_what = 'db', model_class = model_class)
 
     def preview_model(self):
         name = self.request.get('toPreview')
@@ -628,31 +777,46 @@ class ModelEditorImportFromLibrary(BaseHandler):
         # If the example models are not currently in the datastore, add them
         example_model = db.GqlQuery("SELECT * FROM StochKitModelWrapper WHERE is_public = :1 AND model_name = :2", True, 'dimerdecay').get()
         if example_model is None:
-            save_model(dimerdecay(), 'dimerdecay', "", is_public=True)
+            save_model(dimerdecay(), 'dimerdecay', "", isSpatial = False, is_public=True)
 
         example_model = db.GqlQuery("SELECT * FROM StochKitModelWrapper WHERE is_public = :1 AND model_name = :2", True, 'birth_death').get()
         if example_model is None:
-            save_model(birthdeath(), 'birth_death', "", is_public=True)
+            save_model(birthdeath(), 'birth_death', "", isSpatial = False, is_public=True)
 
         example_model = db.GqlQuery("SELECT * FROM StochKitModelWrapper WHERE is_public = :1 AND model_name = :2", True, 'lotkavolterra_oscillating').get()
         if example_model is None:
-           save_model(lotkavolterra_oscillating(), 'lotkavolterra_oscillating', "", is_public=True)
+           save_model(lotkavolterra_oscillating(), 'lotkavolterra_oscillating', "", isSpatial = False, is_public=True)
 
         example_model = db.GqlQuery("SELECT * FROM StochKitModelWrapper WHERE is_public = :1 AND model_name = :2", True, 'lotkavolterra_equilibrium').get()
         if example_model is None:
-            save_model(lotkavolterra_equilibrium(), 'lotkavolterra_equilibrium', "", is_public=True)
+            save_model(lotkavolterra_equilibrium(), 'lotkavolterra_equilibrium', "", isSpatial = False, is_public=True)
         
         example_model = db.GqlQuery("SELECT * FROM StochKitModelWrapper WHERE is_public = :1 AND model_name = :2", True, 'MichaelisMenten').get()
         if example_model is None:
-            save_model(MichaelisMenten(), 'MichaelisMenten', "", is_public=True)
+            save_model(MichaelisMenten(), 'MichaelisMenten', "", isSpatial = False, is_public=True)
 
         example_model = db.GqlQuery("SELECT * FROM StochKitModelWrapper WHERE is_public = :1 AND model_name = :2", True, 'schlogl').get()
         if example_model is None:
-            save_model(get_model_from_file('schlogl',open('examples/schlogl.xml')), 'schlogl', "", is_public=True)
+            save_model(get_model_from_file('schlogl',open('examples/schlogl.xml')), 'schlogl', "", isSpatial = False, is_public=True)
 
         example_model = db.GqlQuery("SELECT * FROM StochKitModelWrapper WHERE is_public = :1 AND model_name = :2", True, 'heat_shock_mass_action').get()
         if example_model is None:
-            save_model(get_model_from_file('heat_shock_mass_action',open('examples/heat_shock_mass_action.xml')), 'heat_shock_mass_action', "", is_public=True)
+            save_model(get_model_from_file('heat_shock_mass_action',open('examples/heat_shock_mass_action.xml')), 'heat_shock_mass_action', "", isSpatial = False, is_public=True)
+
+        example_model = db.GqlQuery("SELECT * FROM StochKitModelWrapper WHERE is_public = :1 AND model_name = :2", True, 'simple_diffusion').get()
+        if example_model is None:
+            szip = exportimport.SuperZip(zipFileName = os.path.abspath(os.path.dirname(__file__)) + '/../static/spatial/SimpleDiffusion.zip')
+            #print szip.zipfb.namelist()
+            mid = szip.extractStochKitModel('SimpleDiffusion/models/SimpleDiffusion.json', self.user.user_id(), self, rename = True)
+            example_model = StochKitModelWrapper.get_by_id(mid)
+            example_model.is_public = True
+            example_model.user_id = ""
+            example_model.model_name = 'simple_diffusion'
+            example_model.put()
+
+            #save_model(get_model_from_file('heat_shock_mass_action',open('examples/heat_shock_mass_action.xml')), 'heat_shock_mass_action', "", isSpatial = False, is_public=True)
+
+
 
 
 def get_model_from_file(name, file):
@@ -666,7 +830,7 @@ def get_model_from_file(name, file):
        
     return model
 
-def do_import(handler, name, from_file = True, model_class=""):
+def do_import(handler, name, from_what, model_class=""):
     """
         Helper function to import models from file / library.
         """
@@ -677,27 +841,54 @@ def do_import(handler, name, from_file = True, model_class=""):
         if db_model is not None:
             return {'status': False, 'msg': 'A Model already exists by that name.'}
         
-        if from_file:
+        if from_what == 'file':
             doc = StochMLDocument.fromFile(handler.request.POST['model_file'].file)
             model = doc.toModel(name)
         
-        else:
-            db_model = db.GqlQuery("SELECT * FROM StochKitModelWrapper WHERE is_public = :1 AND model_name = :2", True, model_class).get()
-            model = db_model.model
+            #newName = self.request.get('newName').strip(' \t')
+
+            # For the model to display and function properly in the UI, we need to make sure that all
+            # the parameters have been resolved to scalar values.
+            try:
+                model.resolveParameters()
+                # Save the model so the resolved parameter values are persisted
+        #save_model(model, name, user_id, isSpatial = False)
+            except:
+                raise ModelError("Could not resolve model parameters.")
+            
+            # Save the model to the datastore.
+            model.name = name
+            save_model(model, name, user_id, isSpatial = False)
+        elif from_what == 'sbml':
+            model = stochss.converter.convert(handler.request.POST['model_file'].file.read(), name)
+        
+            # For the model to display and function properly in the UI, we need to make sure that all
+            # the parameters have been resolved to scalar values.
+            model.resolveParameters()
+            
+            # Save the model to the datastore.
             model.name = name
 
-        # For the model to display and function properly in the UI, we need to make sure that all
-        # the parameters have been resolved to scalar values.
-        try:
-            model.resolveParameters()
-        # Save the model so the resolved parameter values are persisted
-        #save_model(model, name, user_id)
-        except:
-            raise ModelError("Could not resolve model parameters.")
-    
-        # Save the model to the datastore.
-        save_model(model, name, user_id)
-        
+            save_model(model, name, user_id, isSpatial = False)
+        elif from_what == 'db':
+            model = db.GqlQuery("SELECT * FROM StochKitModelWrapper WHERE is_public = :1 AND model_name = :2", True, model_class).get()
+
+            jsonModel = { "name" : name }
+
+            model.model.name = name
+            jsonModel["units"] = model.model.units
+            jsonModel["model"] = model.model.serialize()
+
+            jsonModel["isSpatial"] = model.isSpatial
+            jsonModel["spatial"] = model.spatial
+
+            jsonModel["user_id"] = handler.user.user_id()
+            jsonModel["is_public"] = False
+
+            ModelManager.createModel(handler, jsonModel)
+
+            model = model.model
+
         # Add this model to cache
         add_model_to_cache(handler, name)
         
@@ -744,12 +935,19 @@ class ModelEditorExportToStochkit2(BaseHandler):
             self.render_response('modeleditor.html', **result)
 
 
-def save_model(model, model_name, user_id, is_public=False):
+def save_model(model, model_name, user_id, isSpatial, is_public=False):
     """ Save model as a new entity. """
     db_model = StochKitModelWrapper()
     db_model.user_id = user_id
     db_model.model = model
     db_model.model_name = model_name
+    db_model.isSpatial = isSpatial
+    db_model.spatial = { 'subdomains' : [],
+                         'mesh_wrapper_id' : None,
+                         'species_diffusion_coefficients' : {} ,
+                         'species_subdomain_assignments' : {} ,
+                         'reactions_subdomain_assignments' : {},
+                         'initial_conditions' : {} }
     db_model.is_public = is_public
     db_model.put()
 
@@ -799,7 +997,6 @@ def get_all_models(handler):
         all_models = [row.model for row in db_models]
         
         return all_models
-
     except Exception, e:
         logging.error("model::get_all_model - Error retrieving all the models: %s", e)
         traceback.print_exc()
