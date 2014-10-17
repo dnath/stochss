@@ -35,65 +35,91 @@
     <!--<script type="text/javascript" src = "/static/js/simulate.js"></script>-->
 
     <link href="/static/bootstrap/css/bootstrap.css" rel="stylesheet">
-</head>
+  </head>
   <body>
     <div id="modelEditor">
-      <div class="panel panel-primary">
-        <div class="panel-heading">
-          Species
-        </div>
-        
-        <div class="panel-body">
-          <table class="table">
-            <thead>
-              <tr>
-                <th>Remove</th><th>Name</th><th>Initial Value</th>
-              </tr>
-            </thead>
-            <tbody id="speciesTableBody">
-            </tbody>
-          </table>
+      <div class="selector">
+        <div class="panel panel-primary">
+          <div class="panel-heading">
+            Select a Model
+          </div>
 
-          <button type="button" class="btn btn-default" id="addSpeciesButton">
-            <span class="glyphicon glyphicon-plus"></span> Add Species
-          </button>
-       </div>
+          <div class="panel-body">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Select</th><th>Name</th><th>Type</th><th>Spatial</th><th>Remove</th>
+                </tr>
+              </thead>
+              <tbody class="selectorTableBody">
+              </tbody>
+            </table>
 
-        <div class="panel-footing">
-          <div id="speciesStatusDiv">
+            <button type="button" class="btn btn-default" id="addModelButton">
+              <span class="glyphicon glyphicon-plus"></span> Add Model
+            </button>
           </div>
         </div>
       </div>
 
-      <div class="panel panel-primary">
-        <div class="panel-heading">
-          Reactions
+      <div class="controller">
+        <div class="panel panel-primary">
+          <div class="panel-heading">
+            Species
+          </div>
+          
+          <div class="panel-body">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Remove</th><th>Name</th><th>Initial Value</th>
+                </tr>
+              </thead>
+              <tbody id="speciesTableBody">
+              </tbody>
+            </table>
+
+            <button type="button" class="btn btn-default" id="addSpeciesButton">
+              <span class="glyphicon glyphicon-plus"></span> Add Species
+            </button>
+          </div>
+
+          <div class="panel-footing">
+            <div id="speciesStatusDiv">
+            </div>
+          </div>
         </div>
-        
-        <div class="panel-body">
-          <table class="table">
-            <thead>
-              <tr>
-                <th>Remove</th><th>Name</th><th>Type</th><th>Edit</th>
-              </tr>
-            </thead>
-            <tbody id="reactionsTableBody">
-            </tbody>
-          </table>
 
-          <button type="button" class="btn btn-default" id="addReactionButton">
-            <span class="glyphicon glyphicon-plus"></span> Add Reaction
-          </button>
+        <div class="panel panel-primary">
+          <div class="panel-heading">
+            Reactions
+          </div>
+          
+          <div class="panel-body">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Remove</th><th>Name</th><th>Type</th><th>Edit</th>
+                </tr>
+              </thead>
+              <tbody id="reactionsTableBody">
+              </tbody>
+            </table>
 
-          <button type="button" class="btn btn-default" id="addMichaelisMentonReactionButton">
-            <span class="glyphicon glyphicon-plus"></span> Add Michaelis Menton Reaction
-          </button>
-        </div>
+            <button type="button" class="btn btn-default" id="addReactionButton">
+              <span class="glyphicon glyphicon-plus"></span> Add Reaction
+            </button>
 
-        <div class="panel" id="reactionEditorDiv">
-        </div>
+            <button type="button" class="btn btn-default" id="addMichaelisMentonReactionButton">
+              <span class="glyphicon glyphicon-plus"></span> Add Michaelis Menton Reaction
+            </button>
+          </div>
 
-        <div class="panel-footing" id="reactionStatusDiv">
+          <div class="panel" id="reactionEditorDiv">
+          </div>
+
+          <div class="panel-footing" id="reactionStatusDiv">
+          </div>
         </div>
       </div>
     </div>

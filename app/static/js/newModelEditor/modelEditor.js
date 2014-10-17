@@ -15,8 +15,10 @@ var modelData = {
                     reactants : {},
                     products : { s1 : { name : "species1", stoichiometry : 2 } } }
                 },
-    type : "massaction",
-    name : "dimer_decay"
+
+    units : "population",
+    name : "dimer_decay",
+    isSpatial : false
 };
 
 var getNewMemberName = function(dict, baseName)
@@ -45,6 +47,141 @@ var ModelCollection = Backbone.Collection.extend( {
 
 //var models = [model]
 
+ModelEditor.Selector = Backbone.View.extend(
+    {
+        events: {
+            "click #addModelButton"  : "addModel"
+        },
+
+        initialize : function(attributes)
+        {
+            // Set up room for the model select stuff
+            // Pull in all the models from the internets
+            // Build the simulationConf page (don't need external info to make that happen)
+            this.attributes = attributes;
+
+            this.controller = this.attributes.controller;
+
+            this.$el = $("#modelEditor");
+
+            // Go off and fetch those models and queue up a render on completion
+            this.models = new stochkit.ModelCollection();
+
+            $( '.controller' ).hide();
+
+            this.selectTemplate = _.template('<tr> \
+  <td> \
+    <input type="radio" name="model" /> \
+  </td> \
+  <td> \
+    <%= name %> \
+  </td> \
+  <td> \
+    <%= units %> \
+  </td> \
+  <td> \
+    <% if(isSpatial) { %> \
+      True \
+    <% } else { %> \
+      False \
+    <% } %> \
+  </td> \
+  <td> \
+    <button type=\"button\" class=\"btn btn-default delete\"> \
+      <span class=\"glyphicon glyphicon-remove\"></span> \
+    </button> \
+  </td> \
+</tr>');
+
+            // When finished, queue up a render so folks have something to see
+            this.models.fetch({ success : _.bind(this.render, this),
+                                error : _.bind(this.modelsDownloadError, this) } );
+        },
+
+        addModel : function()
+        {
+            // Make sure model name unique
+            var checkUnique = _.bind(function(name)
+            { 
+                var unique = true;
+
+                for(var i = 0; i < this.models.length; i++)
+                {
+                    if(this.models.at(i).attributes.name == name)
+                    {
+                        unique = false;
+                        break;
+                    }
+                }
+
+                return unique;
+            }, this);
+
+            var i = 0
+            var tmpName = modelData['name'];
+            while(!checkUnique(tmpName))
+            {
+                tmpName = modelData['name'] + i;
+                i++;
+            }
+
+            newData = _.clone(modelData);
+
+            newData['name'] = tmpName;
+
+            //Add the model and save to server
+            this.models.add([newData]);
+            var added = this.models.at(this.models.length - 1);
+
+            //Create GUI elements
+            var row = $( this.selectTemplate(added.attributes) ).appendTo($( '.selectorTableBody' ));
+
+            var radioButton = row.find('input');
+            var button = row.find('button');
+
+            added.save({ success : _.bind(_.partial(this.modelAdded, button), this) ,
+                         error : _.bind(_.partial(this.modelNotAdded, button), this) });
+
+            button.click(_.bind(_.partial(this.destroyModel, added, row), this));
+            radioButton.click(_.bind(_.partial(this.setModel, added), this));
+        },
+
+        destroyModel : function(model, row)
+        {
+            model.destroy();
+            row.remove();
+        },
+
+        modelsDownloadError : function(model, response, options)
+        {
+            // Do something
+            console.log('Failed to download models list');
+        },
+
+        setModel : function(model)
+        {
+            this.controller.setModel(model);
+            $( '.controller' ).show();
+        },
+
+        render : function()
+        {
+            console.log('time to render');
+
+            for(var i = 0; i < this.models.length; i++)
+            {
+                var row = $( this.selectTemplate(this.models.at(i).attributes) ).appendTo($( '.selectorTableBody' ));
+
+                var button = row.find('button');
+                var radioButton = row.find('input');
+
+                radioButton.click(_.bind(_.partial(this.setModel, this.models.at(i)), this));
+                button.click(_.bind(_.partial(this.destroyModel, this.models.at(i), row), this));
+            }
+        }
+    }
+);
+
 ModelEditor.Controller = Backbone.View.extend(
     {
         events: {
@@ -65,17 +202,20 @@ ModelEditor.Controller = Backbone.View.extend(
             //this.on('select', _.bind(this.select, this) );
             this.currentReaction = null;
 
-            // Go off and fetch those models and queue up a render on completion
-            this.models = new stochkit.ModelCollection();
-
             $( '.initialData' ).hide();
             $( '.trajectories' ).hide();
+        },
 
-            // When finished, queue up a render so folks have something to see
-            this.model = new stochkit.Model({ id : this.attributes.id });
-            this.model.urlRoot = "/models/list";
-            this.model.fetch({ success : _.bind(this.render, this),
-                               error : _.bind(this.modelDownloadError, this) } );
+        saveModel : _.throttle(function() {
+            this.model.save();
+        }, 500),
+
+        setModel : function(model)
+        {
+            // When finished, execute a render so folks have something to see
+            this.model = model;
+
+            this.render();
         },
 
         modelDownloadError : function(model, response, options)
@@ -85,7 +225,7 @@ ModelEditor.Controller = Backbone.View.extend(
 
         addSpeciesDom : function(specieHandle, model)
         {
-            var model = this.attributes.m;
+            var model = this.model.attributes;
 
             var specieTableTemplate =
 "<tr> \
@@ -191,7 +331,7 @@ ModelEditor.Controller = Backbone.View.extend(
                         doms[i].remove();
                     }
 
-                    this.addReactionEditorDom(this.currentReaction, this.attributes.m);
+                    this.addReactionEditorDom(this.currentReaction, this.model.attributes);
                     this.speciesMsg( true, "Species deleted");
                 }
             }, specieHandle, model, [deleteButton, nameBox, valueBox, newOption]), this));
@@ -233,9 +373,11 @@ ModelEditor.Controller = Backbone.View.extend(
             {
                 model.species[specieHandle].name = name;
 
-                this.addReactionEditorDom(this.currentReaction, this.attributes.m);
+                this.addReactionEditorDom(this.currentReaction, this.model.attributes);
                 
                 this.speciesMsg(true, "Species name set");
+
+                this.saveModel();
             }
         },
 
@@ -255,9 +397,11 @@ ModelEditor.Controller = Backbone.View.extend(
             // Change the value!
             else
             {
-                model.species[specieHandle] = parseFloat(val);
+                model.species[specieHandle].initialCondition = parseFloat(val);
                 
                 this.speciesMsg(true, "Species " + specieHandle + " value set to " + parseFloat(val).toString());
+
+                this.saveModel();
             }
         },
 
@@ -286,21 +430,23 @@ ModelEditor.Controller = Backbone.View.extend(
 
         addSpecies : function()
         {
-            var newHandle = getNewMemberName(this.attributes.m.species, 'specie');
+            var newHandle = getNewMemberName(this.model.attributes.species, 'specie');
                 
-            this.attributes.m.species[newHandle] = { name : newHandle,
+            this.model.attributes.species[newHandle] = { name : newHandle,
                                                      initialCondition : 0 };
 
-            this.addSpeciesDom(newHandle, this.attributes.m);
+            this.addSpeciesDom(newHandle, this.model.attributes);
 
-            this.addReactionEditorDom(this.currentReaction, this.attributes.m);
+            this.addReactionEditorDom(this.currentReaction, this.model.attributes);
+
+            this.saveModel();
         },
 
         // The following code handles the addition/subtraction of Reactions from the reactions
         //   table.
         addReactionsDom : function(reactionHandle, model)
         {
-            var model = this.attributes.m;
+            var model = this.model.attributes;
 
             var reactionsTableTemplate =
 "<tr> \
@@ -403,6 +549,8 @@ ModelEditor.Controller = Backbone.View.extend(
                 model.reactions[reactionHandle].name = name;
                 
                 this.reactionsMsg(true, "Species name set");
+
+                this.saveModel();
             }
         },
 
@@ -421,23 +569,25 @@ ModelEditor.Controller = Backbone.View.extend(
 
         addReaction : function()
         {
-            var newHandle = getNewMemberName(this.attributes.m.reactions, 'reaction');
+            var newHandle = getNewMemberName(this.model.attributes.reactions, 'reaction');
                 
-            this.attributes.m.reactions[newHandle] = { name : newHandle,
+            this.model.attributes.reactions[newHandle] = { name : newHandle,
                                                        reactants : {},
                                                        products : {},
                                                        type : 'massaction' };
 
-            this.addReactionsDom(newHandle, this.attributes.m);
+            this.addReactionsDom(newHandle, this.model.attributes);
+
+            this.saveModel();
         },
 
         addMichaelisMentonReaction : function()
         {
-            var newHandle = getNewMemberName(this.attributes.m.reactions, 'reaction');
+            var newHandle = getNewMemberName(this.model.attributes.reactions, 'reaction');
 
             var reactant = null, product = null;
 
-            for(var species in this.attributes.m.species)
+            for(var species in this.model.attributes.species)
             {
                 if(reactant == null)
                 {
@@ -450,7 +600,7 @@ ModelEditor.Controller = Backbone.View.extend(
                 }
             }
 
-            this.attributes.m.reactions[newHandle] = { name : newHandle,
+            this.model.attributes.reactions[newHandle] = { name : newHandle,
                                                        reactant : reactant,
                                                        product : product,
                                                        extras : {},
@@ -458,7 +608,9 @@ ModelEditor.Controller = Backbone.View.extend(
                                                        KmRate : 0,
                                                        type : 'michaelismenton' };
 
-            this.addReactionsDom(newHandle, this.attributes.m);
+            this.addReactionsDom(newHandle, this.model.attributes);
+
+            this.saveModel();
         },
 
         // The following code handles the drawing/removal of the mass-action editor
@@ -474,7 +626,7 @@ ModelEditor.Controller = Backbone.View.extend(
                 return;
             }
 
-            var model = this.attributes.m;
+            var model = this.model.attributes;
             var reaction = model.reactions[reactionHandle];
 
             if(reaction.type == 'massaction')
@@ -614,6 +766,8 @@ ModelEditor.Controller = Backbone.View.extend(
             model.reactions[reactionHandle].reactants[reactantHandle] = { name : reactantName, stoichiometry : 2 };
            
             this.addReactantDom(reactantHandle, reactionHandle, model);
+
+            this.saveModel();
         },
 
         handleProductAddButton : function(reactionHandle, model, event) {
@@ -632,6 +786,8 @@ ModelEditor.Controller = Backbone.View.extend(
             model.reactions[reactionHandle].products[productHandle] = { name : productName, stoichiometry : 2 };
            
             this.addProductDom(productHandle, reactionHandle, model);
+
+            this.saveModel();
         },
 
         addReactantDom : function(reactantHandle, reactionHandle, model)
@@ -718,6 +874,8 @@ ModelEditor.Controller = Backbone.View.extend(
                 model.reactions[reactionHandle].reactants[reactantHandle].name = val;
                 
                 this.reactionsMsg(true, "Reactant " + model.species[val].name + " selected");
+
+                this.saveModel();
             }
         },
 
@@ -742,6 +900,8 @@ ModelEditor.Controller = Backbone.View.extend(
                 model.reactions[reactionHandle].reactants[reactantHandle].stoichiometry = parseFloat(val);
                 
                 this.reactionsMsg(true, "Stoichiometry set to " + parseFloat(val).toString());
+
+                this.saveModel();
             }
         },
 
@@ -766,6 +926,8 @@ ModelEditor.Controller = Backbone.View.extend(
                 model.reactions[reactionHandle].rate = parseFloat(val);
                 
                 this.reactionsMsg(true, "Reaction " + name + " rate set to " + parseFloat(val).toString());
+
+                this.saveModel();
             }
         },
 
@@ -853,10 +1015,12 @@ ModelEditor.Controller = Backbone.View.extend(
                 model.reactions[reactionHandle].products[productHandle].name = val;
                 
                 this.reactionsMsg(true, "Product " + model.species[val].name + " selected");
+
+                this.saveModel();
             }
         },
 
-        handleProductStoichiometryChange : function(reactantHandle, reactionHandle, model, handle) {
+        handleProductStoichiometryChange : function(productHandle, reactionHandle, model, handle) {
             var val = $( event.target ).val().trim();
 
             var name = model.reactions[reactionHandle].products[productHandle].name;
@@ -877,19 +1041,21 @@ ModelEditor.Controller = Backbone.View.extend(
                 model.reactions[reactionHandle].products[productHandle].stoichiometry = parseFloat(val);
                 
                 this.reactionsMsg(true, "Stoichiometry of product " + name + " set to " + parseFloat(val).toString());
+
+                this.saveModel();
             }
         },
 
         addReaction : function()
         {
-            var newHandle = getNewMemberName(this.attributes.m.reactions, 'reaction');
-                
-            this.attributes.m.reactions[newHandle] = { name : newHandle,
+            var newHandle = getNewMemberName(this.model.attributes.reactions, 'reaction');
+            
+            this.model.attributes.reactions[newHandle] = { name : newHandle,
                                                        reactants : {},
                                                        products : {},
                                                        type : 'massaction' };
-
-            this.addReactionsDom(newHandle, this.attributes.m);
+            
+            this.addReactionsDom(newHandle, this.model.attributes);
         },
 
         addExtraDom : function(extraHandle, reactionHandle, model)
@@ -1029,6 +1195,8 @@ ModelEditor.Controller = Backbone.View.extend(
                 this.reactionsMsg(true, "Reactant " + name + " selected");
 
                 this.updateMichaelisMentonPreview(reactionHandle, model);
+
+                this.saveModel();
             }
         },
 
@@ -1071,6 +1239,8 @@ ModelEditor.Controller = Backbone.View.extend(
                 this.reactionsMsg(true, "Product " + name + " selected");
 
                 this.updateMichaelisMentonPreview(reactionHandle, model);
+
+                this.saveModel();
             }
         },
 
@@ -1108,6 +1278,8 @@ ModelEditor.Controller = Backbone.View.extend(
                 this.reactionsMsg(true, "Species " + name + " selected");
 
                 this.updateMichaelisMentonPreview(reactionHandle, model);
+
+                this.saveModel();
             }
         },
 
@@ -1146,6 +1318,8 @@ ModelEditor.Controller = Backbone.View.extend(
             this.reactionsMsg(true, "Interaction type set to " + interaction);
 
             this.updateMichaelisMentonPreview(reactionHandle, model);
+
+            this.saveModel();
         },
 
         handleExtraAddButton : function(reactionHandle, model, event) {
@@ -1173,6 +1347,8 @@ ModelEditor.Controller = Backbone.View.extend(
             this.addExtraDom(extraHandle, reactionHandle, model);
 
             this.updateMichaelisMentonPreview(reactionHandle, model);
+
+            this.saveModel();
         },
 
         handleVRateChange : function(reactionHandle, model, event) {
@@ -1198,6 +1374,8 @@ ModelEditor.Controller = Backbone.View.extend(
                 this.reactionsMsg(true, "v rate set to " + parseFloat(val).toString());
 
                 this.updateMichaelisMentonPreview(reactionHandle, model);
+
+                this.saveModel();
             }
         },
 
@@ -1224,6 +1402,8 @@ ModelEditor.Controller = Backbone.View.extend(
                 this.reactionsMsg(true, "Km set to " + parseFloat(val).toString());
 
                 this.updateMichaelisMentonPreview(reactionHandle, model);
+
+                this.saveModel();
             }
         },
 
@@ -1250,6 +1430,8 @@ ModelEditor.Controller = Backbone.View.extend(
                 this.reactionsMsg(true, "Extra interaction rate for reaction " + name + " set to " + parseFloat(val).toString());
 
                 this.updateMichaelisMentonPreview(reactionHandle, model);
+
+                this.saveModel();
             }
         },
 
@@ -1353,7 +1535,7 @@ ModelEditor.Controller = Backbone.View.extend(
         render : function()
         {
             // Convert XML to custom internal format
-            var model = this.model;
+            var model = this.model.attributes;
 
             for(var specieName in model.species)
             {
@@ -1381,5 +1563,6 @@ ModelEditor.Controller = Backbone.View.extend(
 $( document ).ready( function() {
     var id = $.url().param("id");
 
-    var control = new ModelEditor.Controller( { id : id } );
+    var control = new ModelEditor.Controller( );
+    var selector = new ModelEditor.Selector( { controller : control } );
 });
