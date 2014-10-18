@@ -272,4 +272,4 @@ class ModelEditorPage(BaseHandler):
         return True
     
     def get(self):
-        self.render_response('modeleditor.html')
+        self.render_response('modelEditor.html')

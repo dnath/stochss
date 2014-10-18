@@ -88,7 +88,7 @@ ModelEditor.Selector = Backbone.View.extend(
   </td> \
   <td> \
     <button type=\"button\" class=\"btn btn-default delete\"> \
-      <span class=\"glyphicon glyphicon-remove\"></span> \
+      <i class=\"icon-remove\"></i></span> \
     </button> \
   </td> \
 </tr>');
@@ -231,7 +231,7 @@ ModelEditor.Controller = Backbone.View.extend(
 "<tr> \
   <td> \
     <button type=\"button\" class=\"btn btn-default delete\"> \
-      <span class=\"glyphicon glyphicon-remove\"></span> \
+      <i class=\"icon-remove\"></i> \
     </button> \
   </td> \
   <td> \
@@ -452,7 +452,7 @@ ModelEditor.Controller = Backbone.View.extend(
 "<tr> \
   <td> \
     <button type=\"button\" class=\"btn btn-default delete\"> \
-      <span class=\"glyphicon glyphicon-remove\"></span> \
+      <i class=\"icon-remove\"></i> \
     </button> \
   </td> \
   <td> \
@@ -463,7 +463,7 @@ ModelEditor.Controller = Backbone.View.extend(
   </td> \
   <td> \
     <button type=\"button\" class=\"btn btn-default edit\"> \
-      <span class=\"glyphicon glyphicon-wrench\"></span>\
+      <i class=\"icon-remove\"></i> \
     </button> \
   </td> \
 </tr>";
@@ -796,7 +796,7 @@ ModelEditor.Controller = Backbone.View.extend(
             var reactantProductRowDOM = "<tr> \
 <td> \
 <button type=\"button\" class=\"btn btn-default delete\"> \
-<span class=\"glyphicon glyphicon-remove\"></span> \
+<i class=\"icon-remove\"></i></span> \
 </button> \
 </td> \
 <td> \
@@ -937,7 +937,7 @@ ModelEditor.Controller = Backbone.View.extend(
             var reactantProductRowDOM = "<tr> \
 <td> \
 <button type=\"button\" class=\"btn btn-default delete\"> \
-<span class=\"glyphicon glyphicon-remove\"></span> \
+<i class=\"icon-remove\"></i> \
 </button> \
 </td> \
 <td> \
@@ -1064,7 +1064,7 @@ ModelEditor.Controller = Backbone.View.extend(
             var extraRowDOM = "<tr> \
 <td> \
 <button type=\"button\" class=\"btn btn-default delete\"> \
-<span class=\"glyphicon glyphicon-remove\"></span> \
+<i class=\"icon-remove\"></i> \
 </button> \
 </td> \
 <td> \

@@ -3,8 +3,9 @@
 {% block content %}
 {% block csscontent %}
 <link href="/static/css/jquery-ui-1.9.1.custom.min.css" rel="stylesheet">
+<link href="/static/css/panelHack.css" rel="stylesheet">
 {% endblock %}
-<div id="modelEditor">
+<div id="modelEditor" class="span9 row-fluid">
     <div class="selector">
         <div class="panel panel-primary">
             <div class="panel-heading">
@@ -23,7 +24,7 @@
                 </table>
 
                 <button type="button" class="btn btn-default" id="addModelButton">
-                    <span class="glyphicon glyphicon-plus"></span> Add Model
+                    <i class="icon-plus"></i> Add Model
                 </button>
             </div>
         </div>
@@ -47,7 +48,7 @@
                 </table>
 
                 <button type="button" class="btn btn-default" id="addSpeciesButton">
-                    <span class="glyphicon glyphicon-plus"></span> Add Species
+                    <i class="icon-plus"></i> Add Species
                 </button>
             </div>
 
@@ -74,11 +75,11 @@
                 </table>
 
                 <button type="button" class="btn btn-default" id="addReactionButton">
-                    <span class="glyphicon glyphicon-plus"></span> Add Reaction
+                    <i class="icon-plus"></i> Add Reaction
                 </button>
 
                 <button type="button" class="btn btn-default" id="addMichaelisMentonReactionButton">
-                    <span class="glyphicon glyphicon-plus"></span> Add Michaelis Menton Reaction
+                    <i class="icon-plus"></i> Add Michaelis Menton Reaction
                 </button>
             </div>
 
@@ -110,7 +111,7 @@
                 </table>
 
                 <button type="button" class="btn btn-default add">
-                    <span class="glyphicon glyphicon-plus"></span> Add Reactant
+                    <i class="icon-plus"></i> Add Reactant
                 </button>
             </div>
 
@@ -141,7 +142,7 @@
                 </table>
 
                 <button type="button" class="btn btn-default add">
-                    <span class="glyphicon glyphicon-plus"></span> Add Product
+                    <i class="icon-plus"></i> Add Product
                 </button>
             </div>
 
@@ -228,7 +229,7 @@
 
             <div>
                 <button type="button" class="btn btn-default add">
-                    <span class="glyphicon glyphicon-plus"></span> Add Extra Interaction
+                    <i class="icon-plus"></i> Add Extra Interaction
                 </button>
             </div>
         </div>
@@ -256,5 +257,5 @@
         src="http://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS_HTML-full">
 </script>
 
-<script type="text/javascript" src = "/static/js/newModelEditor/modelEditor.js"></script>
+<script type="text/javascript" src = "/static/js/modelEditor.js"></script>
 {% endblock %}
