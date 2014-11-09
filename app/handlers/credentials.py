@@ -72,35 +72,18 @@ class CredentialsPage(BaseHandler):
             vms = []           
             all_numbers_correct = True       
             
-            if 'compute_power' in params:   
-                if params['compute_power'] == 'small':
-                     head_node = {"instance_type": 't1.micro', "num_vms": 1}
-#                 elif params['compute_power'] == 'medium':
-#                      head_node = {"instance_type": 'c3.xlarge', "num_vms": 1}
-#                 elif params['compute_power'] == 'large':
-#                      head_node = {"instance_type": 'c3.2xlarge', "num_vms": 1}
-                else:
-                    result = {'status': 'Failure' , 'msg': 'Unknown instance type.'}
+            head_node = {"instance_type": 'c3.large', "num_vms": 1}
+            
+            num_type = 'num_m3.large'
+            if num_type in params and params[num_type] != '':
+                if int(params[num_type]) > 20:
+                    result = {'status': 'Failure' , 'msg': 'Number of new vms should be no more than 20'}
                     all_numbers_correct = False
-            else:
-                head_node = None
-                if 'head_node' in params:
-                    head_node = {"instance_type": params['head_node'].replace('radio_', ''), "num_vms": 1}
-                    
-                for type in self.INS_TYPES:
-                    num_type = 'num_'+type
-                 
-                    if num_type in params and params[num_type] != '':
-                        if int(params[num_type]) > 20:
-                            result = {'status': 'Failure' , 'msg': 'Number of new vms should be no more than 20.'}
-                            all_numbers_correct = False
-                            break;
-                        elif int(params[num_type]) <= 0:
-                            result = {'status': 'Failure' , 'msg': 'Number of new vms should be at least 1.'}
-                            all_numbers_correct = False
-                            break;
-                        else:
-                            vms.append({"instance_type": type, "num_vms": int(params[num_type])})                   
+                elif int(params[num_type]) < 0:
+                    result = {'status': 'Failure' , 'msg': 'Number of new vms should not be negative'}
+                    all_numbers_correct = False
+                else:
+                    vms.append({"instance_type": 'm3.large', "num_vms": int(params[num_type])})    
 
             if all_numbers_correct:    
                 result = self.start_vms(user_id, self.user_data.getCredentials(), head_node, vms)
@@ -223,6 +206,7 @@ class CredentialsPage(BaseHandler):
                 context['number_creating'] = number_creating
                 context['number_pending'] = number_pending
                 context['number_running'] = number_running
+                context['number_nodes'] = number_creating + number_pending + number_running
                 context['number_failed'] = number_failed
                 result['status']= True
                 result['credentials_msg'] = 'The EC2 keys have been validated.'
