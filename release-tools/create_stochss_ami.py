@@ -94,7 +94,7 @@ class AmiCreator:
     self.run_tests()
     self.__cleanup_instance()
     self.make_image()
-    self.__stop_instance()
+    self.__terminate_instance()
 
   def __create_ec2_connection(self):
     if os.environ.has_key('AWS_ACCESS_KEY'):
@@ -113,7 +113,7 @@ class AmiCreator:
 
   def __launch_instance(self):
     key_pair = self.ec2_connection.create_key_pair(self.key_name)
-    key_pair.save('.')
+    key_pair.save(os.path.dirname(__file__))
 
     self.key_file = str(os.path.join(os.path.dirname(os.path.abspath(__file__)), "{0}.pem".format(self.key_name)))
     if os.path.exists(self.key_file):
@@ -308,7 +308,7 @@ class AmiCreator:
                                                operation='add',
                                                groups='all')
 
-  def __stop_instance(self):
+  def __terminate_instance(self):
     print '================================'
     print 'Terminating launched instance...'
     print '================================'
