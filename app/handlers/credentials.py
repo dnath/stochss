@@ -78,7 +78,7 @@ class CredentialsPage(BaseHandler):
                   "credentials": self.user_data.getCredentials(),
                   "key_prefix": user_id
                 }
-                stopped = service.stopMachines(terminate_params,True) #True means blocking, ie wait for success (its pretty quick)
+                stopped = service.stop_machines(terminate_params,True) #True means blocking, ie wait for success (its pretty quick)
                 if not stopped:
                     raise
                 result = {'status': True, 'msg': 'Sucessfully terminated all running VMs.'}
@@ -103,7 +103,7 @@ class CredentialsPage(BaseHandler):
             params["infrastructure"] = "ec2"
             
             # Check if the supplied credentials are valid of not
-            if service.validateCredentials(params):
+            if service.validate_credentials(params):
                 self.user_data.valid_credentials = True
                 result = {'status': True, 'credentials_msg': ' Credentials saved successfully! The EC2 keys have been validated.'}
                 # See if the amazon db table is intitalized
@@ -199,7 +199,7 @@ class CredentialsPage(BaseHandler):
                     "credentials": credentials,
                     "key_prefix": service.KEYPREFIX + user_id
                 }
-                result = service.describeMachines(params)
+                result = service.describe_machines(params)
                 return result
             except:
                 return None
@@ -218,7 +218,7 @@ class CredentialsPage(BaseHandler):
              'credentials':credentials,
              'use_spot_instances':False}
         service = backendservices()
-        res = service.startMachines(params)
+        res = service.start_machines(params)
         if res != None and res['success']==True:
             result = {'status':'Success' , 'msg': 'Sucessfully requested '+ str(number_of_vms) + ' Virtual Machines.'}
         else:
@@ -229,7 +229,7 @@ class CredentialsPage(BaseHandler):
     def delete_vms():
         db_user = db.GqlQuery("SELECT * FROM StochKitModelWrapper WHERE user_id = :1", user_id).get()
         db_user.user = valid_username
-        result =  backendservice.stopMachines(db_user.user,True) #True means blocking, ie wait for success
+        result =  backendservice.stop_machines(db_user.user,True) #True means blocking, ie wait for success
 
 
 class LocalSettingsPage(BaseHandler):

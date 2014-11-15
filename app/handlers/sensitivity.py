@@ -169,7 +169,7 @@ class SensitivityPage(BaseHandler):
             job = SensitivityJobWrapper.get_by_id(int(self.request.get('id')))
 
             service = backendservices()
-            service.fetchOutput(job.cloudDatabaseID, job.outputURL)
+            service.fetch_output(job.cloudDatabaseID, job.outputURL)
             # Unpack it to its local output location
             os.system('tar -xf' +job.cloudDatabaseID+'.tar')
             job.outData = os.path.dirname(os.path.abspath(__file__))+'/../output/'+job.cloudDatabaseID
@@ -240,7 +240,7 @@ class SensitivityPage(BaseHandler):
                     "credentials": self.user_data.getCredentials(),
                     "key_prefix": self.user.user_id()
                 }
-                if self.user_data.valid_credentials and backend_services.isOneOrMoreComputeNodesRunning(compute_check_params):
+                if self.user_data.valid_credentials and backend_services.is_one_or_more_compute_nodes_running(compute_check_params):
                     job = self.runCloud(data)
                 else:
                     return self.response.write(json.dumps({
@@ -339,7 +339,7 @@ class SensitivityPage(BaseHandler):
         os.environ["AWS_ACCESS_KEY_ID"] = db_credentials['EC2_ACCESS_KEY']
         os.environ["AWS_SECRET_ACCESS_KEY"] = db_credentials['EC2_SECRET_KEY']
         # Send the task to the backend
-        cloud_result = service.executeTask(params)
+        cloud_result = service.execute_task(params)
         # if not cloud_result["success"]:
         job.cloudDatabaseID = cloud_result["db_id"]
         job.celeryPID = cloud_result["celery_pid"]

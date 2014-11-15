@@ -84,16 +84,16 @@ class StochKitJobWrapper(db.Model):
                 os.remove(job.stochkit_job.zipFileName)
 
         if stochkit_job.resource == 'Local':
-            service.deleteTaskLocal([stochkit_job.pid])
+            service.delete_local_task([stochkit_job.pid])
             
             time.sleep(0.25)
             
-            status = service.checkTaskStatusLocal([stochkit_job.pid]).values()[0]
+            status = service.check_local_task_status([stochkit_job.pid]).values()[0]
         else:
             db_credentials = handler.user_data.getCredentials()
             os.environ["AWS_ACCESS_KEY_ID"] = db_credentials['EC2_ACCESS_KEY']
             os.environ["AWS_SECRET_ACCESS_KEY"] = db_credentials['EC2_SECRET_KEY']
-            service.deleteTasks([(stochkit_job.celery_pid,stochkit_job.pid)])
+            service.delete_tasks([(stochkit_job.celery_pid,stochkit_job.pid)])
 
         if stochkit_job.output_location is not None and os.path.exists(str(stochkit_job.output_location)):
             shutil.rmtree(stochkit_job.output_location)
@@ -357,7 +357,7 @@ class SimulatePage(BaseHandler):
             job = StochKitJobWrapper.get_by_id(int(self.request.get('id')))
 
             service = backendservices()
-            service.fetchOutput(job.stochkit_job.pid, job.stochkit_job.output_url)
+            service.fetch_output(job.stochkit_job.pid, job.stochkit_job.output_url)
             
             stochkit_job = job.stochkit_job
             # Unpack it to its local output location
@@ -561,7 +561,7 @@ class SimulatePage(BaseHandler):
             if params['resource'] == "local":
                 result=self.runStochKitLocal(params)
             elif params['resource'] == 'cloud':
-                if self.user_data.valid_credentials and backend_services.isOneOrMoreComputeNodesRunning(compute_check_params):
+                if self.user_data.valid_credentials and backend_services.is_one_or_more_compute_nodes_running(compute_check_params):
                     result=self.runCloud(params)
                 else:
                     result = { 'status': False, 'msg': 'You must have at least one active compute node to run in the cloud.' }
@@ -677,7 +677,7 @@ class SimulatePage(BaseHandler):
             # Call backendservices and execute StochKit
             service = backendservices()
             print "backendservices.executeTask() params = {0}".format(params)
-            cloud_result = service.executeTask(params)
+            cloud_result = service.execute_task(params)
             if not cloud_result["success"]:
                 e = cloud_result["exception"]
                 result = {

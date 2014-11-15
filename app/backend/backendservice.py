@@ -13,13 +13,13 @@ from boto.s3.connection import S3Connection
 from celery.task.control import inspect
 import celery
 
-class backendservices():
+class backendservices:
     ''' 
     constructor for the backend service class.
     It should be passed the agent creds
     ''' 
         
-    #Class Constants
+    # Class Constants
     TABLENAME = 'stochss'
     KEYPREFIX = 'stochss'
     QUEUEHEAD_KEY_TAG = 'queuehead'
@@ -37,61 +37,76 @@ class backendservices():
         sys.path.append(os.path.join(os.path.dirname(__file__), 'lib/celery'))
         sys.path.append(os.path.join(os.path.dirname(__file__), 
                                      '/Library/Python/2.7/site-packages/amqp'))
+
+    def __is_queue_broker_up(self):
+        sleep_time = 5
+        total_wait_time = 15
+        total_tries = total_wait_time / sleep_time
+
+        current_try = 0
+        logging.info("About to check broker at: {0}".format(celery.current_app.conf['BROKER_URL']))
+
+        while True:
+            try:
+                inspection_stats = inspect().stats()
+
+            except IOError as e:
+                current_try += 1
+                logging.info("Broker down, try: {0}, exception: {1}".format(current_try, e))
+
+                if current_try >= total_tries:
+                    logging.info("Broker unreachable for {0} seconds.".format(total_wait_time))
+                    return False, e, traceback.format_exc()
+
+                time.sleep(sleep_time)
+                continue
+
+            logging.info("Broker up")
+            break
+
+        return True, None, None
             
-    def executeTask(self,params):
+    def execute_task(self, params):
         '''
         This method instantiates celery tasks in the cloud.
-	Returns return value from celery async call and the task ID
+        Returns return value from celery async call and the task ID
         '''
-        #logging.info('inside execute task for cloud : Params - %s', str(params))
         result = {}
         try:
-            from tasks import task,updateEntry
+            from tasks import task, update_entry
             #This is a celery task in tasks.py: @celery.task(name='stochss')
-            
+
             # Need to make sure that the queue is actually reachable because
             # we don't want the user to try to submit a task and have it
             # timeout because the broker server isn't up yet.
-            sleep_time = 5
-            total_wait_time = 15
-            total_tries = total_wait_time / sleep_time
-            current_try = 0
-            logging.info("About to check broker at: {0}".format(celery.current_app.conf['BROKER_URL']))
-            while True:
-                try:
-                    insp = inspect().stats()
-                except IOError as e:
-                    current_try += 1
-                    logging.info("Broker down, try: {0}, exception: {1}".format(current_try, e))
-                    if current_try >= total_tries:
-                        logging.info("Broker unreachable for {0} seconds.".format(total_wait_time))
-                        return {
-                            "success": False,
-                            "reason": "Cloud instances unavailable. Please wait a minute for their initialization to complete.",
-                            "exception": str(e),
-                            "traceback": traceback.format_exc()
-                        }
-                    time.sleep(sleep_time)
-                    continue
-                logging.info("Broker up")
-                break
 
-            taskid = str(uuid.uuid4())
-            result["db_id"] = taskid
+            is_broker_up, exception, traceback_str = self.__is_queue_broker_up()
+            if is_broker_up is False:
+                return {
+                    "success": False,
+                    "reason": "Cloud instances unavailable. Please wait a minute for their initialization to complete.",
+                    "exception": str(exception),
+                    "traceback": traceback_str
+                }
+
+            task_id = str(uuid.uuid4())
+            result["db_id"] = task_id
+
             #create a celery task
-            logging.info("executeTask : executing task with uuid : %s ", taskid)
-            timenow = datetime.now() 
+            logging.info("executeTask : executing task with uuid : %s ", task_id)
+            time_now = datetime.now()
             data = {
                 'status': "pending",
-                "start_time": timenow.strftime('%Y-%m-%d %H:%M:%S'),
+                "start_time": time_now.strftime('%Y-%m-%d %H:%M:%S'),
                 'Message': "Task sent to Cloud"
             }
             
             tmp = None
             if params["job_type"] == "mcem2":
-                queue_name = taskid
+                queue_name = task_id
                 result["queue"] = queue_name
                 data["queue"] = queue_name
+
                 # How many cores?
                 requested_cores = -1
                 if "cores" in params:
@@ -99,20 +114,23 @@ class backendservices():
                 
                 ##################################################################################################################
                 # The master task can run on any node...
-                #TODO: master task might need to run on node with at least 2 cores...
+                # TODO: master task might need to run on node with at least 2 cores...
                 # launch_params["instance_type"] = "c3.large"
                 # launch_params["num_vms"] = 1
                 ##################################################################################################################
                 
                 celery_info = CelerySingleton().app.control.inspect()
+
                 # How many active workers are there?
                 active_workers = celery_info.active()
+
                 # We will keep around a dictionary of the available workers, where
                 # the key will be the workers name and the value will be how many
                 # cores that worker has (i.e. how many tasks they can execute 
                 # concurrently).
                 available_workers = {}
                 core_count = 0
+
                 if active_workers:
                     for worker_name in active_workers:
                         # active_workers[worker_name] will be a list of dictionaries representing
@@ -121,31 +139,35 @@ class backendservices():
                         if not active_workers[worker_name]:
                             available_workers[worker_name] = celery_info.stats()[worker_name]['pool']['max-concurrency']
                             core_count += int(available_workers[worker_name])
+
                 logging.info("All available workers:".format(available_workers))
+
                 # We assume that at least one worker is already consuming from the main queue
                 # so we just need to find that one worker and remove it from the list, since
                 # we need one worker on the main queue for the master task.
                 done = False
                 for worker_name in available_workers:
                     worker_queues = celery_info.active_queues()[worker_name]
+
                     for queue in worker_queues:
                         if queue["name"] == "celery":
                             popped_cores = int(available_workers.pop(worker_name))
                             done = True
                             core_count -= popped_cores
                             break
+
                     if done:
                         break
+
                 if core_count <= 0:
-                    # Then theres only one worker available
+                    # Then there's only one worker available
                     return {
                         "success": False,
                         "reason": "You need to have at least two workers in order to run a parameter estimation job in the cloud."
                     }
-                logging.info("Found {0} cores that can be used as slaves on the following workers: {1}".format(
-                    core_count,
-                    available_workers
-                ))
+
+                logging.info("Found {0} cores that can be used as slaves on the following workers: {1}".format(core_count,
+                                                                                                               available_workers))
                 if requested_cores == -1:
                     params["paramstring"] += " --cores {0}".format(core_count)
                     # Now just use all available cores since the user didn't request
@@ -155,12 +177,14 @@ class backendservices():
                         worker_names.append(worker_name)
                     logging.info("Rerouting all available workers: {0} to queue: {1}".format(worker_names, queue_name))
                     rerouteWorkers(worker_names, queue_name)
+
                 else:
                     params["paramstring"] += " --cores {0}".format(requested_cores)
                     # Now loop through available workers and see if we have enough free to meet
                     # requested core count.
                     worker_names = []
                     unmatched_cores = requested_cores
+
                     if available_workers:
                         for worker_name in available_workers:
                             # We need to find out what the concurrency of the worker is.
@@ -171,6 +195,7 @@ class backendservices():
                             if unmatched_cores <= 0:
                                 # Then we have enough
                                 break
+
                     # Did we get enough?
                     if unmatched_cores > 0:
                         # Nope...
@@ -181,39 +206,41 @@ class backendservices():
                                 unmatched_cores
                             )
                         }
+
                     logging.info("Found enough idle cores to meet requested core count of {0}".format(requested_cores))
+
                     # We have enough, re-route active workers to the new queue
                     logging.info("Rerouting workers: {0} to queue: {1}".format(worker_names, queue_name))
                     rerouteWorkers(worker_names, queue_name)
                 
                 # Update DB entry just before sending to worker
-                updateEntry(taskid, data, backendservices.TABLENAME)
+                update_entry(task_id, data, backendservices.TABLENAME)
                 params["queue"] = queue_name
-                tmp = master_task.delay(taskid, params)
-                #TODO: This should really be done as a background_thread as soon as the task is sent
+                tmp = master_task.delay(task_id, params)
+
+                # TODO: This should really be done as a background_thread as soon as the task is sent
                 #      to a worker, but this would require an update to GAE SDK.
                 # call the poll task process
-                poll_task_path = os.path.join(
-                    os.path.dirname(os.path.abspath(__file__)),
-                    "poll_task.py"
-                )
+
+                poll_task_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "poll_task.py")
                 logging.info("Task sent to cloud with celery id {0}...".format(tmp.id))
-                poll_task_string = "python {0} {1} {2} > poll_task_{1}.log 2>&1".format(
-                    poll_task_path,
-                    tmp.id,
-                    queue_name
-                )
+
+                poll_task_string = "python {0} {1} {2} > poll_task_{1}.log 2>&1".format(poll_task_path,
+                                                                                        tmp.id,
+                                                                                        queue_name)
                 p = subprocess.Popen(shlex.split(poll_task_string))
                 result["celery_pid"] = tmp.id
+
             else:
-                updateEntry(taskid, data, backendservices.TABLENAME)
+                update_entry(task_id, data, backendservices.TABLENAME)
                 #celery async task execution http://ask.github.io/celery/userguide/executing.html
-                tmp = task.delay(taskid, params)  #calls task(taskid,params)
+                tmp = task.delay(task_id, params)  #calls task(taskid,params)
                 result["celery_pid"] = tmp.id
 
             logging.info("executeTask :  result of task : %s", str(tmp))
             result["success"] = True
             return result
+
         except Exception, e:
             logging.error("executeTask : error - %s", str(e))
             return {
@@ -223,7 +250,7 @@ class backendservices():
                 "traceback": traceback.format_exc()
             }
     
-    def executeTaskLocal(self, params):
+    def execute_local_task(self, params):
         '''
         This method spawns a stochkit process. It doesn't wait for the process to finish. The status of the
         process can be tracked using the pid and the output directory returned by this method. 
@@ -235,7 +262,6 @@ class backendservices():
            {"pid" : 'the process id of the task spawned', "output": "the directory where the files will be generated"}
          
         '''
-
         try:           
             logging.info("executeTaskLocal : inside method with params : %s ", 
                          str(params))
@@ -284,8 +310,7 @@ class backendservices():
             logging.error("executeTaskLocal : exception raised : %s" , str(e))
             return None
 
-    
-    def checkTaskStatusLocal(self, pids):
+    def check_local_task_status(self, pids):
         '''
         checks the status of the pids and returns true if the task is running or else returns false
         pids = [list of pids to check for status]
@@ -306,7 +331,7 @@ class backendservices():
             logging.error("checkTaskStatusLocal: Exiting with error : {0}".format(e))
             return None
     
-    def checkTaskStatusCloud(self, pids):
+    def check_cloud_task_status(self, pids):
         '''
         checks the status of the pids and returns true if the task is running or else returns false
         pids = [list of pids to check for status]
@@ -315,9 +340,8 @@ class backendservices():
         res = {}
         
         return res
-    
-    
-    def describeTask(self, params):
+
+    def describe_task(self, params):
         '''
         @param params: A dictionary with the following fields
          "AWS_ACCESS_KEY_ID" : AWS access key
@@ -339,7 +363,7 @@ class backendservices():
             return None
         return result
     
-    def stopTasks(self, params):
+    def stop_tasks(self, params):
         '''
         @param id_pairs: a list of (database_id, task_id) pairs, each representing
                           a task to be stopped
@@ -360,9 +384,9 @@ class backendservices():
             'AWS_SECRET_ACCESS_KEY': credentials['AWS_SECRET_ACCESS_KEY'],
             'taskids': db_ids
         }
-        return self.describeTask(describe_params)
+        return self.describe_task(describe_params)
     
-    def deleteTasks(self, taskids):
+    def delete_tasks(self, taskids):
         '''
         @param taskid:the list of taskids to be removed 
         this method revokes scheduled tasks as well as the tasks in progress. It 
@@ -377,9 +401,8 @@ class backendservices():
             logging.info("deleteTasks: All tasks removed")
         except Exception, e:
             logging.error("deleteTasks : exiting with error : %s", str(e))
-
     
-    def deleteTaskLocal(self, pids):
+    def delete_local_task(self, pids):
         """
         pids : list of pids to be deleted.
         Terminates the processes associated with the PID. 
@@ -394,7 +417,7 @@ class backendservices():
                 logging.error("deleteTaskLocal : couldn't kill process. error: %s", str(e))
         logging.info("deleteTaskLocal : exiting method")
     
-    def isOneOrMoreComputeNodesRunning(self, params):# credentials):
+    def is_one_or_more_compute_nodes_running(self, params):# credentials):
         '''
         Checks for the existence of running compute nodes. Only need one running compute node
         to be able to run a job in the cloud.
@@ -409,7 +432,7 @@ class backendservices():
                 "credentials": credentials,
                 "key_prefix": key_prefix
             }
-            all_vms = self.describeMachines(params)
+            all_vms = self.describe_machines(params)
             if all_vms == None:
                 return False
             # Just need one running vm
@@ -420,9 +443,7 @@ class backendservices():
         except:
             return False
     
-    def isQueueHeadRunning(self, params):
-        '''
-        '''
+    def is_queue_head_running(self, params):
         credentials = params["credentials"]
         key_prefix = self.KEYPREFIX
         if "key_prefix" in params:
@@ -433,7 +454,7 @@ class backendservices():
                 "credentials": credentials,
                 "key_prefix": key_prefix
             }
-            all_vms = self.describeMachines(params)
+            all_vms = self.describe_machines(params)
             if all_vms == None:
                 return False
             # Just need one running vm with the QUEUEHEAD_KEY_TAG in the name of the keypair
@@ -444,7 +465,7 @@ class backendservices():
         except:
             return False
     
-    def startMachines(self, params, block=False):
+    def start_machines(self, params, block=False):
         '''
         This method instantiates ec2 instances
         '''
@@ -475,12 +496,12 @@ class backendservices():
                 "credentials": params["credentials"],
                 "key_prefix": key_prefix
             }
-            if self.isQueueHeadRunning(compute_check_params):
+            if self.is_queue_head_running(compute_check_params):
 		#Queue head is running so start as many vms as requested
                 res = i.run_instances(params,[])
-                self.copyCeleryConfigToInstance(res, params)
+                self.__copy_celery_config_to_instance(res, params)
                 # start celery via ssh
-                self.startCeleryViaSSH(res, params)
+                self.__start_celery_via_ssh(res, params)
             else:
                 # Need to start the queue head (RabbitMQ)
                 params["queue_head"] = True
@@ -495,9 +516,9 @@ class backendservices():
                 #NOTE: This relies on the InfrastructureManager being run in blocking mode...
                 queue_head_ip = res["vm_info"]["public_ips"][0]
                 self.__update_celery_config_with_queue_head_ip(queue_head_ip)
-                self.copyCeleryConfigToInstance(res, params)
+                self.__copy_celery_config_to_instance(res, params)
                 # start celery via ssh
-                self.startCeleryViaSSH(res, params)
+                self.__start_celery_via_ssh(res, params)
 
                 params["keyname"] = requested_key_name
                 params["queue_head"] = False
@@ -505,9 +526,9 @@ class backendservices():
                     #subtract 1 since we can use the queue head as a worker
                     params["num_vms"] = vms_requested - 1
                     res = i.run_instances(params,[])
-                    self.copyCeleryConfigToInstance(res, params)
+                    self.__copy_celery_config_to_instance(res, params)
                     # start celery via ssh
-                    self.startCeleryViaSSH(res, params)
+                    self.__start_celery_via_ssh(res, params)
 
                 params["num_vms"] = vms_requested
 
@@ -519,7 +540,7 @@ class backendservices():
             print "startMachines : exiting method with error :", str(e)
             return None
 
-    def copyCeleryConfigToInstance(self, reservation, params):
+    def __copy_celery_config_to_instance(self, reservation, params):
 ##      # Update celery config file...it should have the correct IP
 ##      # of the Queue head node, which should already be running.
 ##      celery_config_filename = os.path.join(
@@ -544,7 +565,7 @@ class backendservices():
         if not os.path.exists(celery_config_filename):
             raise Exception("celery config file not found: {0}".format(celery_config_filename))
         for ip in reservation['vm_info']['public_ips']:
-            self.waitforSSHconnection(keyfile, ip)
+            self.__wait_for_ssh_connection(keyfile, ip)
             cmd = "scp -o 'StrictHostKeyChecking no' -i {0} {1} ubuntu@{2}:celeryconfig.py".format(keyfile, celery_config_filename, ip)
             logging.info(cmd)
             success = os.system(cmd)
@@ -553,60 +574,72 @@ class backendservices():
             else:
                 raise Exception("scp failure: {0} not transfered to {1}".format(celery_config_filename, ip))
 
-    def waitforSSHconnection(self, keyfile, ip):
+    def __wait_for_ssh_connection(self, keyfile, ip):
         SSH_RETRY_COUNT = 30
         SSH_RETRY_WAIT = 3
+
         for _ in range(0, SSH_RETRY_COUNT):
             cmd = "ssh -o 'StrictHostKeyChecking no' -i {0} ubuntu@{1} \"pwd\"".format(keyfile, ip)
             logging.info(cmd)
             success = os.system(cmd)
+
             if success == 0:
                 logging.info("ssh connected to {0}".format(ip))
                 return True
+
             else:
                 logging.info("ssh not connected to {0}, sleeping {1}".format(ip, SSH_RETRY_WAIT))
                 time.sleep(SSH_RETRY_WAIT)
-        raise Exception("Timeout waiting to connect to node via SSH")
-        
 
-    def startCeleryViaSSH(self, reservation, params):
-##    # Even the queue head gets a celery worker
-##    # NOTE: We only need to use the -n argument to celery command if we are starting
-##    #       multiple workers on the same machine. Instead, we are starting one worker
-##    #       per machine and letting that one worker execute one task per core, using
-##    #       the configuration in celeryconfig.py to ensure that Celery detects the 
-##    #       number of cores and enforces this desired behavior.
-##    userstr += "export PYTHONPATH=/home/ubuntu/pyurdme/:/home/ubuntu/stochss/app/\n"
-##    if self.PARAM_WORKER_QUEUE in parameters:
-##      start_celery_str = "celery -A tasks worker --autoreload --loglevel=info -Q {0} --workdir /home/ubuntu > /home/ubuntu/celery.log 2>&1 & \n".format(parameters[self.PARAM_WORKER_QUEUE])
-##    else:
-##      start_celery_str = "celery -A tasks worker --autoreload --loglevel=info --workdir /home/ubuntu > /home/ubuntu/celery.log 2>&1"
-##    #userstr+="sudo -u ubuntu screen -d -m bash -c '{0}'\n".format(start_celery_str)  # PyURDME must be run inside a 'screen' terminal as part of the FEniCS code depends on the ability to write to the processe's terminal, screen provides this terminal.
-##    userstr+="screen -d -m bash -c '{0}'\n".format(start_celery_str)  # PyURDME must be run inside a 'screen' terminal as part of the FEniCS code depends on the ability to write to the process' terminal, screen provides this terminal.
+        raise Exception("Timeout waiting to connect to node via SSH")
+
+    def __start_celery_via_ssh(self, reservation, params):
+        ##    # Even the queue head gets a celery worker
+        ##    # NOTE: We only need to use the -n argument to celery command if we are starting
+        ##    #       multiple workers on the same machine. Instead, we are starting one worker
+        ##    #       per machine and letting that one worker execute one task per core, using
+        ##    #       the configuration in celeryconfig.py to ensure that Celery detects the
+        ##    #       number of cores and enforces this desired behavior.
+        ##    userstr += "export PYTHONPATH=/home/ubuntu/pyurdme/:/home/ubuntu/stochss/app/\n"
+        ##    if self.PARAM_WORKER_QUEUE in parameters:
+        ##      start_celery_str = "celery -A tasks worker --autoreload --loglevel=info -Q {0} --workdir /home/ubuntu > /home/ubuntu/celery.log 2>&1 & \n".format(parameters[self.PARAM_WORKER_QUEUE])
+        ##    else:
+        ##      start_celery_str = "celery -A tasks worker --autoreload --loglevel=info --workdir /home/ubuntu > /home/ubuntu/celery.log 2>&1"
+        ##    #userstr+="sudo -u ubuntu screen -d -m bash -c '{0}'\n".format(start_celery_str)  # PyURDME must be run inside a 'screen' terminal as part of the FEniCS code depends on the ability to write to the processe's terminal, screen provides this terminal.
+        ##    userstr+="screen -d -m bash -c '{0}'\n".format(start_celery_str)  # PyURDME must be run inside a 'screen' terminal as part of the FEniCS code depends on the ability to write to the process' terminal, screen provides this terminal.
+
         credentials = params['credentials']
-        python_path = "source /home/ubuntu/.bashrc;export PYTHONPATH=/home/ubuntu/pyurdme/:/home/ubuntu/stochss/app/;"
-        python_path+='export AWS_ACCESS_KEY_ID={0};'.format(str(credentials['EC2_ACCESS_KEY']))
-        python_path+='export AWS_SECRET_ACCESS_KEY={0};'.format( str(credentials['EC2_SECRET_KEY']))
-        start_celery_str = "celery -A tasks worker --autoreload --loglevel=info --workdir /home/ubuntu > /home/ubuntu/celery.log 2>&1"
+
+        commands = []
+        commands.append('source /home/ubuntu/.bashrc;export PYTHONPATH=/home/ubuntu/pyurdme/:/home/ubuntu/stochss/app/:/home/ubuntu/stochss/app/backend')
+        commands.append('export AWS_ACCESS_KEY_ID={0}'.format(str(credentials['EC2_ACCESS_KEY'])))
+        commands.append('export AWS_SECRET_ACCESS_KEY={0}'.format(str(credentials['EC2_SECRET_KEY'])))
+        commands.append('celery -A tasks worker --autoreload --loglevel=info --workdir /home/ubuntu > /home/ubuntu/celery.log 2>&1')
+
         # PyURDME must be run inside a 'screen' terminal as part of the FEniCS code depends on the ability to write to the process' terminal, screen provides this terminal.
-        celerycmd = "sudo screen -d -m bash -c '{1}{0}'\n".format(start_celery_str,python_path)
-        #print "reservation={0}".format(reservation)
-        #print "params={0}".format(params)
-        keyfile = "{0}/../{1}.key".format(os.path.dirname(__file__),params['keyname'])
-        #logging.info("keyfile = {0}".format(keyfile))
+        celery_cmd = "sudo screen -d -m bash -c '{0}'\n".format(';'.join(commands))
+        # print "reservation={0}".format(reservation)
+        # print "params={0}".format(params)
+
+        keyfile = "{0}/../{1}.key".format(os.path.dirname(__file__), params['keyname'])
+        # logging.info("keyfile = {0}".format(keyfile))
+
         if not os.path.exists(keyfile):
             raise Exception("ssh keyfile file not found: {0}".format(keyfile))
+
         for ip in reservation['vm_info']['public_ips']:
-            self.waitforSSHconnection(keyfile, ip)
-            cmd = "ssh -o 'StrictHostKeyChecking no' -i {0} ubuntu@{1} \"{2}\"".format(keyfile, ip, celerycmd)
+            self.__wait_for_ssh_connection(keyfile, ip)
+
+            cmd = "ssh -o 'StrictHostKeyChecking no' -i {0} ubuntu@{1} \"{2}\"".format(keyfile, ip, celery_cmd)
             logging.info(cmd)
             success = os.system(cmd)
+
             if success == 0:
                 logging.info("celery started on {0}".format(ip))
             else:
                 raise Exception("Failure to start celery on {0}".format(ip))
         
-    def stopMachines(self, params, block=False):
+    def stop_machines(self, params, block=False):
         '''
         This method would terminate all the  instances associated with the account
 	that have a keyname prefixed with stochss (all instances created by the backend service)
@@ -626,7 +659,7 @@ class backendservices():
             logging.error("Terminate machine failed with error : %s", str(e))
             return False
     
-    def describeMachines(self, params):
+    def describe_machines(self, params):
         '''
         This method gets the status of all the instances of ec2
         '''
@@ -648,9 +681,8 @@ class backendservices():
         except Exception, e:
             logging.error("describeMachines : exiting method with error : %s", str(e))
             return None
-    
-    
-    def validateCredentials(self, params):
+
+    def validate_credentials(self, params):
         '''
         This method verifies the validity of ec2 credentials
         '''
@@ -676,9 +708,8 @@ class backendservices():
         except Exception, e:
             logging.error("validateCredentials: exiting with error : %s", str(e))
             return False
-    
-    
-    def getSizeOfOutputResults(self, aws_access_key, aws_secret_key, output_buckets):
+
+    def get_output_results_size(self, aws_access_key, aws_secret_key, output_buckets):
         '''
         This method checks the size of the output results stored in S3 for all of the buckets and keys
          specified in output_buckets.
@@ -717,11 +748,12 @@ class backendservices():
                             # Output exists for this key
                             result[job_name] = key.size
             return result
+
         except Exception, e:
             logging.error("getSizeOfOutputResults: unable to get size with exception: {0}".format(e))
             return None
     
-    def fetchOutput(self, taskid, outputurl):
+    def fetch_output(self, taskid, outputurl):
         '''
         This method gets the output file from S3 and extracts it to the output 
         directory
@@ -790,7 +822,7 @@ def teststochoptim(backend,compute_check_params):
     started_queue_head = False
     queue_key = None
     keypair_name = backend.KEYPREFIX+"-ch-stochoptim-testing"
-    if backend.isQueueHeadRunning(compute_check_params):
+    if backend.is_queue_head_running(compute_check_params):
         print "Assuming you already have a queue head up and running..."
     else:
         started_queue_head = True
@@ -806,7 +838,7 @@ def teststochoptim(backend,compute_check_params):
             "keyname": keypair_name,
             "use_spot_instances": False
         }
-        launch_result = backend.startMachines(launch_params, block=True)
+        launch_result = backend.start_machines(launch_params, block=True)
         if not launch_result["success"]:
             print "Failed to start master machine..."
             sys.exit(1)
@@ -865,7 +897,7 @@ def teststochoptim(backend,compute_check_params):
     }
     print "\nCalling executeTask now..."
     sys.stdout.flush()
-    result = backend.executeTask(params)
+    result = backend.execute_task(params)
     if result["success"]:
         print "Succeeded..."
         celery_id = result["celery_pid"]
@@ -887,7 +919,7 @@ def teststochoptim(backend,compute_check_params):
             "taskids": [task_id]
         }
         print "\nCalling describeTask..."
-        desc_result = backend.describeTask(describe_task_params)[task_id]
+        desc_result = backend.describe_task(describe_task_params)[task_id]
         while desc_result["status"] != "finished":
             if "output" in desc_result:
                 print "[{0}] [{1}] [{2}] [{3}]".format(
@@ -909,7 +941,7 @@ def teststochoptim(backend,compute_check_params):
                 )
             time.sleep(60)
             print "\nCalling describeTask..."
-            desc_result = backend.describeTask(describe_task_params)[task_id]
+            desc_result = backend.describe_task(describe_task_params)[task_id]
         print "Finished..."
         print desc_result["output"]
         terminate_params = {
@@ -918,7 +950,7 @@ def teststochoptim(backend,compute_check_params):
             "key_prefix": keypair_name
         }
         print "\nStopping all VMs..."
-        if backend.stopMachines(terminate_params):
+        if backend.stop_machines(terminate_params):
             print "Stopped all machines!"
         else:
             print "Failed to stop machines..."
@@ -939,11 +971,11 @@ def teststochss(backend,params):
     It can also test describe* and start/stop Machines
     '''
 
-    if backend.validateCredentials(params) :
-	print bcolors.FAIL + \
+    if backend.validate_credentials(params) :
+        print bcolors.FAIL + \
             'startMachines is commented out, make sure you have one+ started!'\
             + bcolors.ENDC
-	#or uncomment this next block and comment out the print above
+        #or uncomment this next block and comment out the print above
         #res = backend.startMachines(params)
         #if res is None or not res['success'] :
             #raise TypeError("Error, startMachines failed!")
@@ -953,29 +985,32 @@ def teststochss(backend,params):
         #for aws status checks
         #time.sleep(120)
 
-	print 'describeMachines outputs to the testoutput.log file'
-        backend.describeMachines(params)
+        print 'describeMachines outputs to the testoutput.log file'
+        backend.describe_machines(params)
 
-	#this is only used for cloud task deployment, this verifies that table 
-        #can be created with creds
+        # this is only used for cloud task deployment, this verifies that table
+        # can be created with creds
         credentials = params['credentials']
+
         os.environ["AWS_ACCESS_KEY_ID"] = credentials['EC2_ACCESS_KEY']
         os.environ["AWS_SECRET_ACCESS_KEY"] = credentials['EC2_SECRET_KEY']
+
         print 'access key: '+os.environ["AWS_ACCESS_KEY_ID"]
         createtable(backendservices.TABLENAME)
 
-	#Test that local tasks execute and can be deleted
-        #NOTE: dimer_decay.xml must be in this local dir
-	xmlfile = open('dimer_decay.xml','r')
-	doc = xmlfile.read()
-	xmlfile.close()
+        # Test that local tasks execute and can be deleted
+        # NOTE: dimer_decay.xml must be in this local dir
+        xmlfile = open('dimer_decay.xml','r')
+        doc = xmlfile.read()
+        xmlfile.close()
 
-	############################
-	print 'testing local task execution...'
+        ############################
+        print 'testing local task execution...'
         taskargs = {}
-	pids = []
-	NUMTASKS = 2
-	for i in range(NUMTASKS):
+        pids = []
+        NUMTASKS = 2
+
+        for i in range(NUMTASKS):
             taskargs['paramstring'] = 'ssa -t 100 -i 10 -r 10 --keep-trajectories --seed 706370 --label'
             taskargs['document'] = doc
 
@@ -983,35 +1018,35 @@ def teststochss(backend,params):
             #and mcem2 (for paramsweep/stochoptim)
             taskargs['job_type'] = 'stochkit'
 
-            res = backend.executeTaskLocal(taskargs)
-	    if res is not None:
-	        print 'task {0} local results: {1}'.format(str(i),str(res))
-	        pids.append(res['pid'])
+            res = backend.execute_local_task(taskargs)
+            if res is not None:
+                print 'task {0} local results: {1}'.format(str(i),str(res))
+                pids.append(res['pid'])
                 print
-	print 'number of pids: {0} {1}'.format(str(len(pids)),str(pids))
+                print 'number of pids: {0} {1}'.format(str(len(pids)),str(pids))
 
-    	res  = backend.checkTaskStatusLocal(pids)
-	if res is not None:
-	    print 'status: {0}'.format(str(res))
+            res  = backend.check_local_task_status(pids)
+            if res is not None:
+                print 'status: {0}'.format(str(res))
 
-	time.sleep(5) #need to sleep here to allow for process spawn
-	print 'deleting pids: {0}'.format(str(pids))
-	backend.deleteTaskLocal(pids)    
+            time.sleep(5) #need to sleep here to allow for process spawn
+            print 'deleting pids: {0}'.format(str(pids))
+            backend.delete_local_task(pids)
 
-	############################
-	print '\ntesting cloud task execution...'
+        ############################
+        print '\ntesting cloud task execution...'
         taskargs = {}
-	pids = []
-	taskargs['AWS_ACCESS_KEY_ID'] = credentials['EC2_ACCESS_KEY']
+        pids = []
+        taskargs['AWS_ACCESS_KEY_ID'] = credentials['EC2_ACCESS_KEY']
         taskargs['AWS_SECRET_ACCESS_KEY'] = credentials['EC2_SECRET_KEY']
-	NUMTASKS = 2
-	for i in range(NUMTASKS):
+        NUMTASKS = 2
+        for i in range(NUMTASKS):
             taskargs['paramstring'] = 'ssa -t 100 -i 100 -r 100 --keep-trajectories --seed 706370 --label'
             taskargs['document'] = doc
             #make this unique across all names/users in S3!
             #bug in stochss: if the bucketname is aleady in s3, 
             #tasks run but never update their results in s3 (silent failur)
-    	    taskargs['bucketname'] = 'stochsstestbucket2'
+            # taskargs['bucketname'] = 'stochsstestbucket2'
 
             #options for job_type are stochkit (ssa), stochkit-ode (ode), 
             #and mcem2 (for paramsweep/stochoptim)
@@ -1021,7 +1056,7 @@ def teststochss(backend,params):
             #if this fails with connection refused
             #and you just started a VM recently, then leave the VM up and
             #retry (comment out startMachine above)
-            cloud_result = backend.executeTask(taskargs)
+            cloud_result = backend.execute_task(taskargs)
             print bcolors.OKGREEN + 'cloud_result on executeTask: ' + \
                 str(cloud_result) +  bcolors.ENDC
             if not cloud_result['success']:
@@ -1030,7 +1065,7 @@ def teststochss(backend,params):
 
             res = cloud_result['celery_pid']
             taskid = cloud_result['db_id']
-  	    pids.append(taskid)
+            pids.append(taskid)
 
         #check each task's status
 	taskargs['taskids'] = pids
@@ -1038,7 +1073,7 @@ def teststochss(backend,params):
 	count = NUMTASKS
 	while len(done) < count :
 	    for i in pids:
-                task_status = backend.describeTask(taskargs)
+                task_status = backend.describe_task(taskargs)
                 job_status = task_status[i]  #may be None
 		if job_status is not None:
 		    print 'task id {0} status: {1}'.format(str(i),job_status['status'])
@@ -1062,12 +1097,12 @@ def teststochss(backend,params):
         #this terminates instances associated with this users creds and KEYPREFIX keyname prefix
 	print 'stopMachines outputs to the testoutput.log file'
 	#print 'stopMachines is commented out -- be sure to terminate your instances or uncomment!'
-        if backend.stopMachines(params):
+        if backend.stop_machines(params):
             print 'Stopped all machines!'
         else:
             print 'Failed to stop machines...'
 
-        backend.describeMachines(params)
+        backend.describe_machines(params)
 
 ##########################################
 ##########################################
@@ -1102,10 +1137,10 @@ if __name__ == "__main__":
         "credentials": credentials
     }
     print bcolors.OKGREEN + 'is Q running? ' + \
-        str(backend.isQueueHeadRunning(compute_check_params)) + \
+        str(backend.is_queue_head_running(compute_check_params)) + \
         bcolors.ENDC
     print bcolors.OKGREEN + 'valid creds? ' + \
-        str(backend.validateCredentials(compute_check_params)) + \
+        str(backend.validate_credentials(compute_check_params)) + \
         bcolors.ENDC
     #comment this next line out to run the next test
     #sys.exit(1)
@@ -1130,7 +1165,7 @@ if __name__ == "__main__":
     else :
         raise TypeError("Error, unexpected infrastructure type: "+params['infrastructure'])
 
-    print 'valid creds? '+str(backend.validateCredentials(params))
+    print 'valid creds? '+str(backend.validate_credentials(params))
     print 'for params: '+str(params)
 
     #print 'Exiting main... remove this if you would like to continue testing'

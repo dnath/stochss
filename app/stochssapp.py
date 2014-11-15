@@ -130,7 +130,7 @@ class BaseHandler(webapp2.RequestHandler):
                 params ={}
                 params['credentials'] =credentials
                 params["infrastructure"] = "ec2"
-                if service.validateCredentials(params):
+                if service.validate_credentials(params):
                     user_data.valid_credentials = True
                 else:
                     user_data.valid_credentials = False

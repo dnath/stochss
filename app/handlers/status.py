@@ -54,11 +54,11 @@ class StatusPage(BaseHandler):
                 # TODO: Call the backend to kill and delete the job and all associated files.
                 try:
                     if stochkit_job.resource == 'Local':
-                        service.deleteTaskLocal([stochkit_job.pid])
+                        service.delete_local_task([stochkit_job.pid])
 
                         time.sleep(0.25)
 
-                        status = service.checkTaskStatusLocal([stochkit_job.pid]).values()[0]
+                        status = service.check_local_task_status([stochkit_job.pid]).values()[0]
 
                         if status:
                             raise Exception("")
@@ -66,7 +66,7 @@ class StatusPage(BaseHandler):
                         db_credentials = self.user_data.getCredentials()
                         os.environ["AWS_ACCESS_KEY_ID"] = db_credentials['EC2_ACCESS_KEY']
                         os.environ["AWS_SECRET_ACCESS_KEY"] = db_credentials['EC2_SECRET_KEY']
-                        service.deleteTasks([(stochkit_job.celery_pid,stochkit_job.pid)])
+                        service.delete_tasks([(stochkit_job.celery_pid,stochkit_job.pid)])
                     isdeleted_backend = True
                 except Exception,e:
                     isdeleted_backend = False
@@ -132,7 +132,7 @@ class StatusPage(BaseHandler):
                     try:
                         if stochkit_job.resource == 'Local':
                             # First, check if the job is still running
-                            res = service.checkTaskStatusLocal([stochkit_job.pid])
+                            res = service.check_local_task_status([stochkit_job.pid])
                             if res[stochkit_job.pid]:
                                 stochkit_job.status = "Running"
                             else:
@@ -158,7 +158,7 @@ class StatusPage(BaseHandler):
 
                             # Check the status on the remote end
                             taskparams = {'AWS_ACCESS_KEY_ID':credentials['EC2_ACCESS_KEY'],'AWS_SECRET_ACCESS_KEY':credentials['EC2_SECRET_KEY'],'taskids':[stochkit_job.pid]}
-                            task_status = service.describeTask(taskparams)
+                            task_status = service.describe_task(taskparams)
                             job_status = task_status[stochkit_job.pid]
                             # It frequently happens that describeTasks return None before the job is finsihed.
                             if job_status == None:
@@ -218,7 +218,7 @@ class StatusPage(BaseHandler):
                 number = len(jobs) - number
                 if job.resource == "local":
                     if job.status != "Finished" or job.status != "Failed":
-                        res = service.checkTaskStatusLocal([job.pid])
+                        res = service.check_local_task_status([job.pid])
                         if res[job.pid]:
                             job.status = "Running"
                         else:
@@ -235,7 +235,7 @@ class StatusPage(BaseHandler):
                     credentials = self.user_data.getCredentials()
                     # Check the status from backend
                     taskparams = {'AWS_ACCESS_KEY_ID':credentials['EC2_ACCESS_KEY'],'AWS_SECRET_ACCESS_KEY':credentials['EC2_SECRET_KEY'],'taskids':[job.cloudDatabaseID]}
-                    task_status = service.describeTask(taskparams)
+                    task_status = service.describe_task(taskparams)
                     job_status = task_status[job.cloudDatabaseID]
                     # If it's finished
                     if job_status['status'] == 'finished':
@@ -297,7 +297,7 @@ class StatusPage(BaseHandler):
                 number = len(jobs) - number
                 if job.resource == "local" or not job.resource:
                     # First, check if the job is still running
-                    res = service.checkTaskStatusLocal([job.pid])
+                    res = service.check_local_task_status([job.pid])
                     if res[job.pid] and job.pid:
                         job.status = "Running"
                     else:
@@ -326,7 +326,7 @@ class StatusPage(BaseHandler):
                         'AWS_SECRET_ACCESS_KEY': credentials['EC2_SECRET_KEY'],
                         'taskids': [job.cloudDatabaseID]
                     }
-                    task_status = service.describeTask(taskparams)
+                    task_status = service.describe_task(taskparams)
                     job_status = task_status[job.cloudDatabaseID]
                     # If it's finished
                     if job_status['status'] == 'finished':
@@ -380,7 +380,7 @@ class StatusPage(BaseHandler):
 
                 # Check the status on the remote end
                 taskparams = {'AWS_ACCESS_KEY_ID':credentials['EC2_ACCESS_KEY'],'AWS_SECRET_ACCESS_KEY':credentials['EC2_SECRET_KEY'],'taskids':cloud_task_status.keys()}
-                task_status = service.describeTask(taskparams)
+                task_status = service.describe_task(taskparams)
 
             jobs = sorted(jobs, key = lambda x : (datetime.datetime.strptime(x.startTime, '%Y-%m-%d-%H-%M-%S') if hasattr(x, 'startTime') and x.startTime != None else ''), reverse = True)
 
@@ -388,7 +388,7 @@ class StatusPage(BaseHandler):
                 number = len(jobs) - number
                 if job.resource == "local" or not job.resource:
                     # First, check if the job is still running
-                    res = service.checkTaskStatusLocal([job.pid])
+                    res = service.check_local_task_status([job.pid])
                     if res[job.pid] and job.pid:
                         job.status = "Running"
                     else:
@@ -457,7 +457,7 @@ class StatusPage(BaseHandler):
         if model is None:
             return None
         else:
-        	result = backendservice.describeTask(valid_username)
+        	result = backendservice.describe_task(valid_username)
 		self.render_response('status.html', **result)
 
 
@@ -599,7 +599,7 @@ class JobOutPutPage(BaseHandler):
             stochkit_job = stochkit_job_wrapper.stochkit_job
             # Grab the remote files
             service = backendservices()
-            service.fetchOutput(stochkit_job.pid, stochkit_job.output_url)
+            service.fetch_output(stochkit_job.pid, stochkit_job.output_url)
             
             # Unpack it to its local output location
             os.system('tar -xf' +stochkit_job.uuid+'.tar')

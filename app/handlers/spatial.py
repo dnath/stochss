@@ -76,7 +76,7 @@ class SpatialJobWrapper(db.Model):
                     'credentials': credentials,
                     'ids': [(self.celeryPID, self.cloudDatabaseID)]
                 }
-                result = service.stopTasks(stop_params)
+                result = service.stop_tasks(stop_params)
                 if result and result[self.cloudDatabaseID]:
                     final_cloud_result = result[self.cloudDatabaseID]
                     try:
@@ -218,7 +218,7 @@ class SpatialPage(BaseHandler):
                     "credentials": self.user_data.getCredentials(),
                     "key_prefix": self.user.user_id()
                 }
-                if self.user_data.valid_credentials and backend_services.isOneOrMoreComputeNodesRunning(compute_check_params):
+                if self.user_data.valid_credentials and backend_services.is_one_or_more_compute_nodes_running(compute_check_params):
                     self.runCloud(data)
                     return
                 else:
@@ -281,7 +281,7 @@ class SpatialPage(BaseHandler):
 
                 service = backend.backendservice.backendservices()
                 # Fetch
-                service.fetchOutput(job.cloud_id, job.output_url)
+                service.fetch_output(job.cloud_id, job.output_url)
                 # Unpack
                 os.system('tar -xf' +job.uuid+'.tar')
                 # Record location
@@ -525,7 +525,7 @@ class SpatialPage(BaseHandler):
             os.environ["AWS_ACCESS_KEY_ID"] = self.user_data.getCredentials()['EC2_ACCESS_KEY']
             os.environ["AWS_SECRET_ACCESS_KEY"] = self.user_data.getCredentials()['EC2_SECRET_KEY']
             service = backend.backendservice.backendservices()
-            cloud_result = service.executeTask(cloud_params)
+            cloud_result = service.execute_task(cloud_params)
             if not cloud_result["success"]:
                 e = cloud_result["exception"]
                 self.response.write(json.dumps({"status" : False,

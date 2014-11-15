@@ -175,7 +175,7 @@ class SuperZip:
                     if stochkit_job.output_location is None or (stochkit_job.output_location is not None and not os.path.exists(stochkit_job.output_location)):
                         # Grab the output from S3 if we need to
                         service = backendservices()
-                        service.fetchOutput(stochkit_job.pid, stochkit_job.output_url)
+                        service.fetch_output(stochkit_job.pid, stochkit_job.output_url)
                         # Unpack it to its local output location
                         os.system('tar -xf' +stochkit_job.uuid+'.tar')
                         stochkit_job.output_location = os.path.dirname(os.path.abspath(__file__))+'/../output/'+stochkit_job.uuid
@@ -218,7 +218,7 @@ class SuperZip:
             if (job.jobName in self.stochOptimJobsToDownload) or globalOp:
                 # Grab the remote files
                 service = backendservices()
-                service.fetchOutput(job.cloudDatabaseID, job.outputURL)
+                service.fetch_output(job.cloudDatabaseID, job.outputURL)
                 # Unpack it to its local output location...
                 
                 os.system('tar -xf' +job.cloudDatabaseID+'.tar')
@@ -261,7 +261,7 @@ class SuperZip:
                     if job.outData is None or (job.outData is not None and not os.path.exists(job.outData)):
                         # Grab the output from S3 if we need to
                         service = backendservices()
-                        service.fetchOutput(job.cloudDatabaseID, job.outputURL)
+                        service.fetch_output(job.cloudDatabaseID, job.outputURL)
                         # Unpack it to its local output location
                         os.system('tar -xf' +job.cloudDatabaseID+'.tar')
                         job.outData = os.path.dirname(os.path.abspath(__file__))+'/../output/'+job.cloudDatabaseID
@@ -299,7 +299,7 @@ class SuperZip:
                     # Grab the output from S3 if we need to
                     service = backendservices()
                     # Fetch
-                    service.fetchOutput(job.cloud_id, job.output_url)
+                    service.fetch_output(job.cloud_id, job.output_url)
                     # Unpack
                     os.system('tar -xf' +job.uuid+'.tar')
                     # Record location
@@ -858,7 +858,7 @@ class ImportPage(BaseHandler):
 
             # Get all the job sizes from the backend
             service = backendservices()
-            job_sizes = service.getSizeOfOutputResults(credentials['EC2_ACCESS_KEY'], credentials['EC2_SECRET_KEY'], output_results_to_check)
+            job_sizes = service.get_output_results_size(credentials['EC2_ACCESS_KEY'], credentials['EC2_SECRET_KEY'], output_results_to_check)
             # Add all of the relevant jobs to the context so they will be rendered on the page
             context["stochkit_jobs"] = []
             context["sensitivity_jobs"] = []

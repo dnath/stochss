@@ -187,7 +187,7 @@ class StochOptimJobWrapper(db.Model):
                     'credentials': credentials,
                     'ids': [(self.celeryPID, self.cloudDatabaseID)]
                 }
-                result = service.stopTasks(stop_params)
+                result = service.stop_tasks(stop_params)
                 if result and result[self.cloudDatabaseID]:
                     final_cloud_result = result[self.cloudDatabaseID]
                     try:
@@ -244,7 +244,7 @@ class StochOptimPage(BaseHandler):
                     "credentials": self.user_data.getCredentials(),
                     "key_prefix": self.user.user_id()
                 }
-                if self.user_data.valid_credentials and backend_services.isOneOrMoreComputeNodesRunning(compute_check_params):
+                if self.user_data.valid_credentials and backend_services.is_one_or_more_compute_nodes_running(compute_check_params):
                     result = self.runCloud(data)
                     logging.info("Run cloud finished with result: {0}, generating JSON response".format(result))
                     if not result["success"]:
@@ -483,7 +483,7 @@ class StochOptimPage(BaseHandler):
         os.environ["AWS_ACCESS_KEY_ID"] = self.user_data.getCredentials()['EC2_ACCESS_KEY']
         os.environ["AWS_SECRET_ACCESS_KEY"] = self.user_data.getCredentials()['EC2_SECRET_KEY']
         service = backend.backendservice.backendservices()
-        cloud_result = service.executeTask(cloud_params)
+        cloud_result = service.execute_task(cloud_params)
         if not cloud_result["success"]:
             result = {
                 "success": False,
@@ -631,7 +631,7 @@ class StochOptimVisualization(BaseHandler):
             result = {}
             # Grab the remote files
             service = backend.backendservice.backendservices()
-            service.fetchOutput(job_wrapper.cloudDatabaseID, job_wrapper.outputURL)
+            service.fetch_output(job_wrapper.cloudDatabaseID, job_wrapper.outputURL)
             # Unpack it to its local output location...
             os.system('tar -xf' +job_wrapper.cloudDatabaseID+'.tar')
             job_wrapper.outData = os.path.abspath(

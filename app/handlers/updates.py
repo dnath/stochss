@@ -64,7 +64,7 @@ class UpdatesPage(BaseHandler):
               for job in all_stochkit_jobs.run():
                 stochkit_job = job.stochkit_job  
                 if not stochkit_job.status == "Finished":
-                  res = service.checkTaskStatusLocal([stochkit_job.pid])
+                  res = service.check_local_task_status([stochkit_job.pid])
                   if res[stochkit_job.pid]:
                     context['nojobs'] = False
 
