@@ -1,7 +1,7 @@
 try:
-  import json
+    import json
 except ImportError:
-  from django.utils import simplejson as json
+    from django.utils import simplejson as json
 
 from collections import OrderedDict
 import logging
@@ -11,13 +11,12 @@ import random
 import string
 from stochssapp import BaseHandler
 from backend.backendservice import *
-from backend.tasks import createtable
+from utils import dynamodb
 from google.appengine.ext import db
 import time
+import sys
 
 class CredentialsPage(BaseHandler):
-    """
-    """
     def authentication_required(self):
         return True
     
@@ -27,6 +26,7 @@ class CredentialsPage(BaseHandler):
             user_id = self.user.user_id()
             if user_id is None:
                 raise InvalidUserException
+
         except Exception, e:
             raise InvalidUserException('Cannot determine the current user. '+str(e))
 
@@ -78,18 +78,22 @@ class CredentialsPage(BaseHandler):
                   "credentials": self.user_data.getCredentials(),
                   "key_prefix": user_id
                 }
-                stopped = service.stop_machines(terminate_params,True) #True means blocking, ie wait for success (its pretty quick)
+
+                stopped = service.terminate_machines(terminate_params, True) #True means blocking, ie wait for success (its pretty quick)
                 if not stopped:
                     raise
                 result = {'status': True, 'msg': 'Sucessfully terminated all running VMs.'}
+
             except Exception,e:
                 result = {'status': False, 'msg': 'Failed to terminate the VMs. Please check their status in the EC2 managment consol available from your Amazon account.'}
+
             finally:
                 context = self.getContext(user_id)
                 self.render_response('credentials.html',**(dict(context,**result)))
     
         elif 'refresh' in params:
             self.redirect('/credentials')
+
         else:
             result = {'status': False, 'msg': 'There was an error processing the request'}
             self.render_response('credentials.html', **(dict(context, **result)))
@@ -114,7 +118,7 @@ class CredentialsPage(BaseHandler):
                     os.environ["AWS_SECRET_ACCESS_KEY"] = credentials['EC2_SECRET_KEY']
 
                     try:
-                        createtable(backendservices.TABLENAME)
+                        dynamodb.create_table(backendservices.TABLENAME)
                         self.user_data.is_amazon_db_table=True
                     except Exception,e:
                         pass
@@ -136,8 +140,10 @@ class CredentialsPage(BaseHandler):
     def getContext(self,user_id):
         
         service = backendservices()
+
         params = {}
         credentials =  self.user_data.getCredentials()
+
         params['credentials'] = credentials
         params["infrastructure"] = "ec2"
         
@@ -151,30 +157,43 @@ class CredentialsPage(BaseHandler):
             context['valid_credentials']=False
             context['active_vms']=False
 
-            fake_credentials = { 'EC2_ACCESS_KEY': '', 'EC2_SECRET_KEY': '' }
+            fake_credentials = { 'EC2_ACCESS_KEY': '',
+                                 'EC2_SECRET_KEY': '' }
+
         else:
-            fake_credentials = { 'EC2_ACCESS_KEY': '*' * len(credentials['EC2_ACCESS_KEY']), 'EC2_SECRET_KEY': '*' * len(credentials['EC2_SECRET_KEY']) }
+            fake_credentials = {'EC2_ACCESS_KEY': '*' * len(credentials['EC2_ACCESS_KEY']),
+                                'EC2_SECRET_KEY': '*' * len(credentials['EC2_SECRET_KEY']) }
             
             context['valid_credentials'] = True
-            all_vms = self.get_all_vms(user_id,credentials)
+
+            all_vms = self.get_all_vms(user_id, credentials)
+
             if all_vms == None:
-                result = {'status':False,'vm_status':False,'vm_status_msg':'Could not determine the status of the VMs.'}
+                result = {'status': False,
+                          'vm_status': False,
+                          'vm_status_msg': 'Could not determine the status of the VMs.'}
                 context = {'vm_names':all_vms}
+
             else:
                 number_pending = 0
                 number_running = 0;
                 for vm in all_vms:
                     if vm != None and vm['state']=='pending': number_pending = number_pending + 1
                     elif vm != None and vm['state']=='running': number_running = number_running + 1
+
                 number_of_vms = len(all_vms)
+
                 print "number pending = " + str(number_pending)
                 print "number running = " + str(number_running)
+
                 context['number_of_vms'] = number_of_vms
                 context['vm_names'] = all_vms
                 context['number_pending'] = number_pending
                 context['number_running'] = number_running
+
                 result['status']= True
                 result['credentials_msg'] = 'The EC2 keys have been validated.'
+
                 if number_running+number_pending == 0:
                     context['active_vms'] = False
                 else:
@@ -182,26 +201,27 @@ class CredentialsPage(BaseHandler):
                 
         context = dict(context, **fake_credentials)
         context = dict(result, **context)
+
         return context
     
-    def get_all_vms(self,user_id,credentials):
-        """
-            
-        """
-        #valid_username = self.get_session_property('username')
+    def get_all_vms(self, user_id, credentials):
+        # valid_username = self.get_session_property('username')
         if user_id is None or user_id is "":
             return None
+
         else:
             try:
                 service = backendservices()
                 params = {
                     "infrastructure": service.INFRA_EC2,
                     "credentials": credentials,
-                    "key_prefix": service.KEYPREFIX + user_id
+                    "key_prefix": service.KEY_PREFIX + user_id
                 }
                 result = service.describe_machines(params)
                 return result
+
             except:
+                logging.error(sys.exc_info())
                 return None
                     
     def start_vms(self, user_id, credentials, number_of_vms=None):
@@ -210,7 +230,7 @@ class CredentialsPage(BaseHandler):
         params ={"infrastructure":"ec2",
              "num_vms":number_of_vms, 
              'group':group_random_name, 
-             'image_id':'ami-929812fa',
+             'image_id':'ami-24e6714c',
              'instance_type':'m1.small',
              'key_prefix':key_prefix,
              'keyname':group_random_name, 
@@ -229,7 +249,7 @@ class CredentialsPage(BaseHandler):
     def delete_vms():
         db_user = db.GqlQuery("SELECT * FROM StochKitModelWrapper WHERE user_id = :1", user_id).get()
         db_user.user = valid_username
-        result =  backendservice.stop_machines(db_user.user,True) #True means blocking, ie wait for success
+        result =  backendservice.terminate_machines(db_user.user, True) #True means blocking, ie wait for success
 
 
 class LocalSettingsPage(BaseHandler):

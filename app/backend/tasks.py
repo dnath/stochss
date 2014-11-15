@@ -1,9 +1,9 @@
 import sys
 import os
 
+sys.path.append(os.path.join(os.path.dirname(__file__), '../'))
 sys.path.append(os.path.join(os.path.dirname(__file__), '../lib/celery'))
 sys.path.append(os.path.join(os.path.dirname(__file__), '../lib/kombu'))
-sys.path.append(os.path.join(os.path.dirname(__file__), '../'))
 sys.path.append(os.path.join(os.path.dirname(__file__), '../lib/amqp'))
 sys.path.append(os.path.join(os.path.dirname(__file__), '../lib/billiard'))
 sys.path.append(os.path.join(os.path.dirname(__file__), '../lib/anyjson'))
@@ -38,6 +38,8 @@ from multiprocessing import Process
 import tempfile
 import time
 import signal
+
+from utils import dynamodb
 
 class CelerySingleton(object):
     """
@@ -186,7 +188,7 @@ def update_s3_bucket(task_id, bucket_name, output_dir):
             'output': "https://s3.amazonaws.com/{0}/{1}.tar".format(bucket_name, output_dir)
         }
 
-        update_entry(task_id, data, "stochss")
+        dynamodb.update_entry(task_id, data, "stochss")
 
         # Update the output in S3 every 60 seconds...
         time.sleep(60)
@@ -213,7 +215,7 @@ def handle_task_success(task_id, data, s3_data, bucket_name):
 
     data['output'] = "https://s3.amazonaws.com/{0}/{1}.tar".format(bucket_name, s3_data)
 
-    update_entry(task_id, data, "stochss")
+    dynamodb.update_entry(task_id, data, "stochss")
 
 def handle_task_failure(task_id, data, s3_data=None, bucket_name=None):
     if s3_data and bucket_name:
@@ -238,7 +240,7 @@ def handle_task_failure(task_id, data, s3_data=None, bucket_name=None):
 
         data['output'] = "https://s3.amazonaws.com/{0}/{1}.tar".format(bucket_name, s3_data)
 
-    update_entry(task_id, data, "stochss")
+    dynamodb.update_entry(task_id, data, "stochss")
 
 @celery.task(name='tasks.master_task')
 def master_task(task_id, params):
@@ -253,7 +255,7 @@ def master_task(task_id, params):
             'status': 'active',
             'message': 'Task executing in the cloud.'
         }
-        update_entry(task_id, data, "stochss")
+        dynamodb.update_entry(task_id, data, "stochss")
 
         result = {
             'uuid': task_id
@@ -508,7 +510,7 @@ def task(task_id, params):
       print 'inside celery task method'
       data = {'status': 'active',
               'message': 'Task Executing in cloud'}
-      update_entry(task_id, data, "stochss")
+      dynamodb.update_entry(task_id, data, "stochss")
 
       res = {}
       paramstr =  params['paramstring']
@@ -594,7 +596,7 @@ def task(task_id, params):
       copy_to_s3_str = "python {2} output/{0}.tar {1}".format(uuidstr, bucket_name, TaskConfig.SCCPY_PATH)
       data = {'status': 'active',
               'message': 'Task finished. Generating output.'}
-      update_entry(task_id, data, "stochss")
+      dynamodb.update_entry(task_id, data, "stochss")
 
       os.system(create_tar_output_str)
       print 'copying file to s3 : {0}'.format(copy_to_s3_str)
@@ -614,7 +616,7 @@ def task(task_id, params):
       res['status'] = "finished"
       diff = end_time - start_time
       res['time_taken'] = "{0} seconds and {1} microseconds ".format(diff.seconds, diff.microseconds)
-      update_entry(task_id, res, "stochss")
+      dynamodb.update_entry(task_id, res, "stochss")
 
   except Exception, e:
       expected_output_dir = "output/%s" % uuidstr
@@ -638,12 +640,13 @@ def task(task_id, params):
           res['status'] = 'failed'
           res['message'] = str(e)
 
-          update_entry(task_id, res, "stochss")
+          dynamodb.update_entry(task_id, res, "stochss")
 
       else:
           # Nothing to do here besides send the exception
           data = {'status': 'failed', 'message': str(e)}
-          update_entry(task_id, data, "stochss")
+          dynamodb.update_entry(task_id, data, "stochss")
+
       raise e
 
   return res
@@ -733,101 +736,6 @@ def workersConsumingFromQueue(from_queue):
 #    #print str(i.registered())
 #    #print str(i.active())
 #    #print str(i.scheduled())
-
-"""
-All DynamoBD related methods follow next. TODO: move it to a different file
-"""
-
-def describetask(taskids,tablename):
-    res = {}
-    try:
-        print 'inside describetask method with taskids = {0} and tablename {1}'.format(str(taskids), tablename)
-        dynamo=boto.connect_dynamodb()
-        if not table_exists(dynamo, tablename): return res
-        table = dynamo.get_table(tablename)
-        for taskid in taskids:
-            try:
-                item = table.get_item(hash_key=taskid)
-                res[taskid] = item
-            except Exception,e:
-                res[taskid] = None
-        return res
-    except Exception,e:
-        print "exiting describetask  with error : {0}".format(str(e))
-        print str(e)
-        return res
-
-def removetask(tablename,taskid):
-    print 'inside removetask method with tablename = {0} and taskid = {1}'.format(tablename, taskid)
-    try:
-        dynamo=boto.connect_dynamodb()
-        if table_exists(dynamo, tablename):
-            table = dynamo.get_table(tablename)
-            item = table.get_item(hash_key=taskid)
-            item.delete()
-            return True
-        else:
-            print 'exiting removetask with error : table doesn\'t exists'
-            return False
-        
-    except Exception,e:
-        print 'exiting removetask with error {0}'.format(str(e))
-        return False
-    
-def createtable(tablename=str()):
-    print 'inside create table method with tablename :: {0}'.format(tablename)
-    if tablename == None:
-        tablename = "stochss"
-        print 'default table name picked as stochss'
-    try:
-        print 'connecting to dynamodb'
-        dynamo=boto.connect_dynamodb()
-        #check if table already exisits
-        print 'checking if table {0} exists'.format(tablename)
-        if not table_exists(dynamo,tablename):
-            print 'creating table schema'
-            myschema=dynamo.create_schema(hash_key_name='taskid',hash_key_proto_value=str)
-            table=dynamo.create_table(name=tablename, schema=myschema, read_units=6, write_units=4)
-        else:
-            print "table already exists"
-        return True  
-    except Exception,e:
-        print str(e)
-        return False
-
-def table_exists(dynamo_db, tablename):
-    try:
-        table = dynamo_db.get_table(tablename)
-        if table == None:
-            print "table doesn't exist"
-            return False
-        else:
-            return True
-    except Exception,e:
-        print str(e)
-        return False
-
-def update_entry(task_id=str(), data=dict(), table_name=str()):
-    '''
-     check if entry exists
-     create a entry if not or
-     update the status
-    '''
-    try:
-        print 'inside update_entry method with taskid = {0} and data = {1}'.format(task_id, str(data))
-        dynamodb = boto.connect_dynamodb()
-        if not table_exists(dynamodb, table_name):
-            print "invalid table name specified"
-            return False
-
-        table = dynamodb.get_table(table_name)
-        item = table.new_item(hash_key=str(task_id), attrs=data)
-        item.put()
-        return True
-
-    except Exception,e:
-        print 'exiting update_entry with error : {0}'.format(str(e))
-        return False
     
 if __name__ == "__main__":
 
@@ -846,10 +754,10 @@ if __name__ == "__main__":
     os.environ["AWS_ACCESS_KEY_ID"] = os.environ['EC2_ACCESS_KEY']
     os.environ["AWS_SECRET_ACCESS_KEY"] = os.environ['EC2_SECRET_KEY']
 
-    print createtable('stochss')
+    print dynamodb.createtable('stochss')
     val = {'status':"running", 'message':'done'}
-    update_entry('1234', val, 'stochss')
-    print describetask(['1234', '1234'], 'stochss')
+    dynamodb.update_entry('1234', val, 'stochss')
+    print dynamodb.describe_task(['1234', '1234'], 'stochss')
     
     #this executes a task locally
     #NOTE: dimer_decay.xml must be in this local dir
@@ -862,7 +770,7 @@ if __name__ == "__main__":
     taskargs['bucketname'] = 'cjk1234'
 
     task('1234',taskargs)
-    print describetask(['1234', '1234'], 'stochss')
+    print dynamodb.describe_task(['1234', '1234'], 'stochss')
  
     print 'BE SURE TO GO TO YOUR AWS ADMIN CONSOLE AND DELETE DYNAMODB TABLES AND S3 BUCKETS'
     
