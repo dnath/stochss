@@ -24,7 +24,6 @@ import traceback
 
 class TaskConfig:
     STOCHSS_HOME = '/home/ubuntu/stochss'
-    # THOME = '/home/ubuntu'
     STOCHKIT_DIR = os.path.join(STOCHSS_HOME, 'StochKit')
     ODE_DIR = os.path.join(STOCHSS_HOME, 'ode')
     MCEM2_DIR = os.path.join(STOCHSS_HOME, 'stochoptim')
@@ -62,8 +61,6 @@ celery_config.configure()
 celery = celery_config.app
 
 def poll_commands(queue_name):
-    '''
-    '''
     print "Polling process: just started..."
     package_root = "StochOptim"
     commands_file = os.path.abspath("commands.txt")
@@ -538,14 +535,21 @@ def task(task_id, params):
       exec_str = ''
       commands = []
       if job_type == 'stochkit':
-          # The following executiong string is of the form : stochkit_exec_str = "~/StochKit/ssa -m ~/output/%s/dimer_decay.xml -t 20 -i 10 -r 1000" % (uuidstr)
-          commands.append("{0}/{1} -m {2} --force --out-dir output/{3}/result 2>{4} > {5}".format(TaskConfig.STOCHKIT_DIR, paramstr, xml_file_path, uuidstr, stderr, stdout))
-          # exec_str = "{0}/{1} -m {2} --force --out-dir output/{3}/result 2>{4} > {5}".format(STOCHKIT_DIR, paramstr, xml_file_path, uuidstr, stderr, stdout)
-
+          # The following execution string is of the form :
+          # "~/StochKit/ssa -m ~/output/%s/dimer_decay.xml -t 20 -i 10 -r 1000" % (uuidstr)
+          commands.append("{0}/{1} -m {2} --force --out-dir output/{3}/result 2>{4} > {5}".format(TaskConfig.STOCHKIT_DIR,
+                                                                                                  paramstr,
+                                                                                                  xml_file_path,
+                                                                                                  uuidstr,
+                                                                                                  stderr,
+                                                                                                  stdout))
       elif job_type in ['stochkit_ode', 'sensitivity']:
-          commands.append("{0}/{1} -m {2} --force --out-dir output/{3}/result 2>{4} > {5}".format(TaskConfig.ODE_DIR, paramstr, xml_file_path, uuidstr, stderr, stdout))
-          # exec_str = "{0}/{1} -m {2} --force --out-dir output/{3}/result 2>{4} > {5}".format(ODE_DIR, paramstr, xml_file_path, uuidstr, stderr, stdout)
-
+          commands.append("{0}/{1} -m {2} --force --out-dir output/{3}/result 2>{4} > {5}".format(TaskConfig.ODE_DIR,
+                                                                                                  paramstr,
+                                                                                                  xml_file_path,
+                                                                                                  uuidstr,
+                                                                                                  stderr,
+                                                                                                  stdout))
       elif job_type == 'spatial':
           cmd = "chown -R ubuntu output/{0}".format(uuidstr)
           print cmd
@@ -555,10 +559,10 @@ def task(task_id, params):
           commands.append("sudo -E -u ubuntu {0} {1} {2} {3} {4} {5} 2>{6} > {7}".format(pyurdme_wrapper_path,
                                                                                          xml_file_path,
                                                                                          'output/{0}/results'.format(uuidstr),
-                                                                                          params['simulation_algorithm'],
-                                                                                          params['simulation_realizations'],
-                                                                                          params['simulation_seed'],
-                                                                                           stderr,
+                                                                                         params['simulation_algorithm'],
+                                                                                         params['simulation_realizations'],
+                                                                                         params['simulation_seed'],
+                                                                                         stderr,
                                                                                          stdout))
       
       exec_str = ';'.join(commands)

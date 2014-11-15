@@ -75,7 +75,7 @@ class AmiCreator:
     self.instance_id = None
     self.instance_user = options['instance_user']
 
-    self.is_old_ami = True
+    self.is_old_ami = False
 
   def run(self):
     self.__launch_instance()
