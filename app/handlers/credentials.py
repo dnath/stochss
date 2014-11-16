@@ -227,16 +227,20 @@ class CredentialsPage(BaseHandler):
     def start_vms(self, user_id, credentials, number_of_vms=None):
         key_prefix = user_id
         group_random_name = key_prefix +"-"+''.join(random.choice(string.ascii_uppercase + string.digits) for x in range(6))
-        params ={"infrastructure":"ec2",
-             "num_vms":number_of_vms, 
-             'group':group_random_name, 
-             'image_id':'ami-24e6714c',
-             'instance_type':'m1.small',
-             'key_prefix':key_prefix,
-             'keyname':group_random_name, 
-             'email':[user_id],
-             'credentials':credentials,
-             'use_spot_instances':False}
+
+        params = {
+                    "infrastructure": "ec2",
+                    "num_vms": number_of_vms,
+                    'group': group_random_name,
+                    'image_id': 'ami-aa8f18c2',
+                    'instance_type': 'm1.small',
+                    'key_prefix': key_prefix,
+                    'keyname': group_random_name,
+                    'email': [user_id],
+                    'credentials': credentials,
+                    'use_spot_instances': False
+                 }
+
         service = backendservices()
         res = service.start_machines(params)
         if res != None and res['success']==True:

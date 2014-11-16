@@ -12,6 +12,7 @@ from datetime import datetime
 from tasks import *
 from utils import dynamodb
 
+import boto
 from boto.s3.connection import S3Connection
 
 import celery
@@ -31,7 +32,7 @@ class backendservices():
     INFRA_EC2 = 'ec2'
     INFRA_CLUSTER = 'cluster'
     WORKER_AMIS = {
-        INFRA_EC2: 'ami-24e6714c'
+        INFRA_EC2: 'ami-aa8f18c2'
     }
 
     def __init__(self):
@@ -180,7 +181,7 @@ class backendservices():
                     for worker_name in available_workers:
                         worker_names.append(worker_name)
                     logging.info("Rerouting all available workers: {0} to queue: {1}".format(worker_names, queue_name))
-                    rerouteWorkers(worker_names, queue_name)
+                    reroute_workers(worker_names, queue_name)
 
                 else:
                     params["paramstring"] += " --cores {0}".format(requested_cores)
@@ -215,7 +216,7 @@ class backendservices():
 
                     # We have enough, re-route active workers to the new queue
                     logging.info("Rerouting workers: {0} to queue: {1}".format(worker_names, queue_name))
-                    rerouteWorkers(worker_names, queue_name)
+                    reroute_workers(worker_names, queue_name)
                 
                 # Update DB entry just before sending to worker
                 dynamodb.update_entry(task_id, data, backendservices.TABLE_NAME)
@@ -277,29 +278,29 @@ class backendservices():
             os.system(create_dir_str)
             
             # Write the model document to file
-            xmlfilepath = "output/" + uuidstr +"/"+uuidstr+".xml"
-            xmlfilepath = os.path.abspath(xmlfilepath)
+            xml_file_path = os.path.join("output", uuidstr, uuidstr + ".xml")
+            xml_file_path = os.path.abspath(xml_file_path)
 
-            mfhandle = open(xmlfilepath,'w')
-            mfhandle.write(params['document'])
-            mfhandle.close()
+            model_fhandle = open(xml_file_path, 'w')
+            model_fhandle.write(params['document'])
+            model_fhandle.close()
             
             # Pipe output to these files
-            res['stdout'] = os.path.abspath('output/' + uuidstr + '/stdout')
-            res['stderr'] = os.path.abspath('output/' + uuidstr + '/stderr')
+            res['stdout'] = os.path.abspath(os.path.join('output', uuidstr, 'stdout'))
+            res['stderr'] = os.path.abspath(os.path.join('output', uuidstr, 'stderr'))
 
             backend_dir = os.path.abspath(os.path.dirname(__file__))
             # The following executiong string is of the form :
             # stochkit_exec_str = "ssa -m ~/output/%s/dimer_decay.xml -t 20 -i 10 -r 1000" % (uuidstr)
             stochkit_exec_str = "{backend_dir}/wrapper.py {stdout} {stderr} {0} --model {1} --out-dir output/{2}/result ".format(paramstr,
-                                                                                                                                xmlfilepath,
+                                                                                                                                xml_file_path,
                                                                                                                                 uuidstr,
                                                                                                                                 stdout=res['stdout'],
                                                                                                                                 stderr=res['stderr'],
                                                                                                                                 backend_dir=backend_dir)
             print stochkit_exec_str
-            logging.info("STOCHKIT_EXEX_STR: "+stochkit_exec_str)
-            logging.debug("execute_local_task : Spawning StochKit Task. String : %s", stochkit_exec_str)
+            logging.info("STOCHKIT_EXEX_STR: " + stochkit_exec_str)
+            logging.debug("execute_local_task: Spawning StochKit Task. String : %s", stochkit_exec_str)
             
             p = subprocess.Popen(stochkit_exec_str.split(), stdin=subprocess.PIPE)
 
@@ -394,7 +395,7 @@ class backendservices():
             task_id = id_pair[0]
             database_id = id_pair[1]
             logging.info("stopTasks calling removeTask('{0}')".format(task_id))
-            removeTask(task_id)
+            remove_task(task_id)
             db_ids.append(database_id)
 
         # Then we need to return the final description of the tasks
@@ -417,7 +418,7 @@ class backendservices():
             for taskid_pair in taskids:
                 print 'delete_tasks: removing task {0}'.format(str(taskid_pair))
                 # this removes task from celery queue
-                removeTask(taskid_pair[0])
+                remove_task(taskid_pair[0])
 
                 # this removes task information from DB.
                 dynamodb.remove_task(backendservices.TABLE_NAME, taskid_pair[1])
@@ -487,17 +488,18 @@ class backendservices():
             }
 
             all_vms = self.describe_machines(params)
-            if all_vms == None:
+            if all_vms is None:
                 return False
 
             # Just need one running vm with the QUEUEHEAD_KEY_TAG in the name of the keypair
             for vm in all_vms:
-                if vm != None and vm['state'] == 'running' and vm['key_name'].find(self.QUEUE_HEAD_KEY_TAG) != -1:
+                if vm is not None and vm['state'] == 'running' and vm['key_name'].find(self.QUEUE_HEAD_KEY_TAG) != -1:
                     return True
 
             return False
 
         except:
+            logging.error(sys.exc_info())
             return False
     
     def start_machines(self, params, block=False):
@@ -869,286 +871,333 @@ class bcolors:
 
 ##########################################
 ##########################################
-def test_stochoptim(backend,compute_check_params):
-    '''
-    This tests a stochoptim job using a local run and a cloud run
-    '''
-    started_queue_head = False
-    queue_key = None
-    keypair_name = backend.KEYPREFIX+"-ch-stochoptim-testing"
-    if backend.is_queue_head_running(compute_check_params):
-        print "Assuming you already have a queue head up and running..."
+# def test_stochoptim(backend, compute_check_params):
+#     '''
+#     This tests a stochoptim job using a local run and a cloud run
+#     '''
+#     started_queue_head = False
+#     queue_key = None
+#     keypair_name = backend.KEYPREFIX+"-ch-stochoptim-testing"
+#     if backend.is_queue_head_running(compute_check_params):
+#         print "Assuming you already have a queue head up and running..."
+#
+#     else:
+#         started_queue_head = True
+#         print "Launching queue head / master worker..."
+#         launch_params = {
+#             "infrastructure": backend.INFRA_EC2,
+#             "credentials": credentials,
+#             "num_vms": 1,
+#             "group": keypair_name,
+#             "image_id": backend.WORKER_AMIS[backend.INFRA_EC2],
+#             "instance_type": 't1.micro',#"c3.large",
+#             "key_prefix": keypair_name,
+#             "keyname": keypair_name,
+#             "use_spot_instances": False
+#         }
+#
+#         launch_result = backend.start_machines(launch_params, block=True)
+#         if not launch_result["success"]:
+#             print "Failed to start master machine..."
+#             sys.exit(1)
+#
+#         print "Done. Sleeping 2 mins while machines initialize (status checks)"
+#         time.sleep(120)
+#
+#     # We need to start our own workers first.
+#     cores_to_use = 4
+#     print "Launching {0} slave worker(s)...".format(cores_to_use)
+#     launch_params = {
+#         "infrastructure": backend.INFRA_EC2,
+#         "credentials": credentials,
+#         "num_vms": cores_to_use,
+#         "group": keypair_name,
+#         "image_id": backend.WORKER_AMIS[backend.INFRA_EC2],
+#         "instance_type": 't1.micro',#"c3.large",
+#         "key_prefix": keypair_name,
+#         "keyname": keypair_name,
+#         "use_spot_instances": False
+#     }
+#
+#     # Slaves dont need to be started in blocking mode, although
+#     # blocking mode is being forced inside the InfrastructureManager
+#     # currently.
+#     #comment this block out if you already have 4 workers started
+#     #from a previous test
+#     #cjklaunch_result = backend.startMachines(launch_params, block=False)
+#     #cjkif not launch_result["success"]:
+#         #cjkprint "Failed to start slave worker(s)..."
+#         #cjksys.exit(1)
+#     #cjkprint "Done2. Sleeping 2 mins while machines initialize (status checks)"
+#     #cjktime.sleep(120)
+#
+#     print 'all nodes needed have been launched'
+#     sys.stdout.flush()
+#
+#     # Then we can execute the task.
+#     file_dir_path = os.path.dirname(os.path.abspath(__file__))
+#     path_to_model_file = os.path.join(file_dir_path, "../../stochoptim/inst/extdata/birth_death_REMAImodel.R")
+#     path_to_model_data_file = os.path.join(file_dir_path, "../../stochoptim/inst/extdata/birth_death_REdata0.txt")
+#     path_to_final_data_file = os.path.join(file_dir_path, "../../stochoptim/inst/extdata/birth_death_REdata.txt")
+#     params = {
+#         'credentials':{'EC2_ACCESS_KEY':access_key, 'EC2_SECRET_KEY':secret_key},
+#         "key_prefix": keypair_name,
+#         "job_type": "mcem2",
+#         "cores": cores_to_use,
+#         "model_file": open(path_to_model_file, 'r').read(),
+#         "model_data": {
+#             "extension": "txt",
+#             "content": open(path_to_model_data_file, 'r').read()
+#         },
+#         "final_data": {
+#             "extension": "txt",
+#             "content": open(path_to_final_data_file, 'r').read()
+#         },
+#         "bucketname": "cjktestingstochoptim",
+#         "paramstring": "exec/cedwssa.r --K.ce 1e5 --K.prob 1e6"
+#     }
+#
+#     print "\nCalling execute_task now..."
+#     sys.stdout.flush()
+#     result = backend.execute_task(params)
+#
+#     if result["success"]:
+#         print "Succeeded..."
+#         celery_id = result["celery_pid"]
+#         queue_name = result["queue"]
+#
+#         # call the poll task process
+#         poll_task_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "poll_task.py")
+#         os.system("python {0} {1} {2} > poll_task_{1}.log 2>&1".format(poll_task_path, celery_id, queue_name))
+#         task_id = result["db_id"]
+#
+#         describe_task_params = {
+#             "AWS_ACCESS_KEY_ID": access_key,
+#             "AWS_SECRET_ACCESS_KEY": secret_key,
+#             "taskids": [task_id]
+#         }
+#
+#         print "\nCalling describe_task..."
+#         desc_result = backend.describe_task(describe_task_params)[task_id]
+#
+#         while desc_result["status"] != "finished":
+#             if "output" in desc_result:
+#                 print "[{0}] [{1}] [{2}] [{3}]".format(
+#                     desc_result["taskid"],
+#                     desc_result["status"],
+#                     desc_result["message"],
+#                     desc_result["output"]
+#                 )
+#             elif "message" in desc_result:
+#                 print "[{0}] [{1}] [{2}]".format(
+#                     desc_result["taskid"],
+#                     desc_result["status"],
+#                     desc_result["message"]
+#                 )
+#             else:
+#                 print "[{0}] [{1}]".format(
+#                     desc_result["taskid"],
+#                     desc_result["status"]
+#                 )
+#
+#             time.sleep(60)
+#             print "\nCalling describeTask..."
+#             desc_result = backend.describe_task(describe_task_params)[task_id]
+#
+#         print "Finished..."
+#         print desc_result["output"]
+#         terminate_params = {
+#             "infrastructure": backend.INFRA_EC2,
+#             "credentials": credentials,
+#             "key_prefix": keypair_name
+#         }
+#
+#         print "\nStopping all VMs..."
+#
+#         if backend.terminate_machines(terminate_params):
+#             print "Stopped all machines!"
+#         else:
+#             print "Failed to stop machines..."
+#
+#     else:
+#         print "Failed..."
+#         if "exception" in result:
+#             print result["exception"]
+#             print result["traceback"]
+#         else:
+#             print result["reason"]
 
+##########################################
+##########################################
+
+def test_stochss_local():
+    os.chdir(os.path.join(os.path.abspath(os.path.dirname(__file__)), '../..'))
+    print "pwd = ", os.path.abspath(os.curdir)
+
+    backend = backendservices()
+
+    with open('examples/dimer_decay.xml', 'r') as xmlfile:
+        model_xml_doc = xmlfile.read()
+
+    print 'testing local task execution...'
+    task_args = {}
+    pids = []
+
+    NUMTASKS = 2
+    for pid in range(NUMTASKS):
+        task_args['paramstring'] = './StochKit/ssa -t 100 -i 10 -r 10 --keep-trajectories --seed 706370 --label'
+        task_args['document'] = model_xml_doc
+        task_args['job_type'] = 'stochkit'      # stochkit (ssa) or stochkit-ode (ode) or and mcem2
+
+        res = backend.execute_local_task(task_args)
+        if res is not None:
+            print 'task {0} local results: {1}'.format(str(pid), str(res))
+            pids.append(res['pid'])
+            print
+            print 'number of pids: {0}, pids = {1}'.format(str(len(pids)), str(pids))
+
+        res = backend.check_local_task_status(pids)
+        if res is not None:
+            print 'status: {0}'.format(str(res))
+        time.sleep(5)
+
+    time.sleep(5)  # need to sleep here to allow for process spawn
+    print 'deleting pids: {0}'.format(str(pids))
+    backend.delete_local_task(pids)
+
+def test_stochss_cloud(start_vms, key_name, security_group):
+    os.chdir(os.path.join(os.path.abspath(os.path.dirname(__file__)), '../..'))
+    print "pwd = ", os.path.abspath(os.curdir)
+
+    backend = backendservices()
+
+    try:
+       access_key = os.environ["AWS_ACCESS_KEY"]
+       secret_key = os.environ["AWS_SECRET_KEY"]
+    except KeyError:
+       print "main: Environment variables AWS_ACCESS_KEY and AWS_SECRET_KEY not set, cannot continue"
+       sys.exit(1)
+
+    if not os.environ.has_key("AWS_ACCESS_KEY_ID"):
+        os.environ["AWS_ACCESS_KEY_ID"] = access_key
+    if not os.environ.has_key("AWS_SECRET_ACCESS_KEY"):
+        os.environ["AWS_SECRET_ACCESS_KEY"] = secret_key
+
+    credentials = {'EC2_ACCESS_KEY': access_key,
+                   'EC2_SECRET_KEY': secret_key}
+
+    compute_check_params = {"infrastructure": backend.INFRA_EC2,
+                            "credentials": credentials,
+                            "key_prefix": 'stochss-test-1-queuehead'}
+
+    if backend.validate_credentials(compute_check_params):
+        print bcolors.OKGREEN + 'valid creds = True' + bcolors.ENDC
     else:
-        started_queue_head = True
-        print "Launching queue head / master worker..."
-        launch_params = {
-            "infrastructure": backend.INFRA_EC2,
-            "credentials": credentials,
-            "num_vms": 1,
-            "group": keypair_name,
-            "image_id": backend.WORKER_AMIS[backend.INFRA_EC2],
-            "instance_type": 't1.micro',#"c3.large",
-            "key_prefix": keypair_name,
-            "keyname": keypair_name,
-            "use_spot_instances": False
-        }
+        print bcolors.FAIL + 'valid creds = False' + bcolors.ENDC
+        return
 
-        launch_result = backend.start_machines(launch_params, block=True)
-        if not launch_result["success"]:
-            print "Failed to start master machine..."
-            sys.exit(1)
+    dynamodb.create_table(backendservices.TABLE_NAME)
 
-        print "Done. Sleeping 2 mins while machines initialize (status checks)"
+    # #### run this part to test stochoptim (parameter estimation code) #####
+    # NOTE: Uncomment this to test stochkit2 job run
+    params = {}
+    params['credentials'] = credentials
+    params['infrastructure'] = backend.INFRA_EC2
+    params['num_vms'] = 1
+    params['group'] = 'stochss-test-1-queuehead'
+
+    # this is used for workers.  its overridden for head node in
+    # agents/ec2_agent.py to be c3.large b/c we need more resources there
+    # head node is also used as a worker node
+    params['instance_type'] = 'c3.large'
+
+    # stochss will prefix whatever keyname you give here: stochss, queuehead tag for queueheads
+    params['keyname'] = 'stochss-test-1-queuehead'
+    params['use_spot_instances'] = False
+
+    if params['infrastructure'] == backendservices.INFRA_EC2 :
+        params['image_id'] = backend.WORKER_AMIS[backend.INFRA_EC2]
+    else :
+        raise TypeError("Error, unexpected infrastructure type: "+params['infrastructure'])
+
+    print 'start_vms = ', start_vms
+    if start_vms:
+        res = backend.start_machines(params)
+
+        if res is None or not res['success'] :
+            raise TypeError("Error, start_machines failed!")
+
+        print bcolors.OKGREEN + 'start_machines succeeded ' + str(res) +  bcolors.ENDC
+        print 'started VMs, sleeping for a couple minutes to allow for initialization'
+
+        # for aws status checks
         time.sleep(120)
 
-    # We need to start our own workers first.
-    cores_to_use = 4
-    print "Launching {0} slave worker(s)...".format(cores_to_use)
-    launch_params = {
-        "infrastructure": backend.INFRA_EC2,
-        "credentials": credentials,
-        "num_vms": cores_to_use,
-        "group": keypair_name,
-        "image_id": backend.WORKER_AMIS[backend.INFRA_EC2],
-        "instance_type": 't1.micro',#"c3.large",
-        "key_prefix": keypair_name,
-        "keyname": keypair_name,
-        "use_spot_instances": False
-    }
-
-    # Slaves dont need to be started in blocking mode, although
-    # blocking mode is being forced inside the InfrastructureManager
-    # currently.
-    #comment this block out if you already have 4 workers started 
-    #from a previous test
-    #cjklaunch_result = backend.startMachines(launch_params, block=False)
-    #cjkif not launch_result["success"]:
-        #cjkprint "Failed to start slave worker(s)..."
-        #cjksys.exit(1)
-    #cjkprint "Done2. Sleeping 2 mins while machines initialize (status checks)"
-    #cjktime.sleep(120)
-
-    print 'all nodes needed have been launched'
-    sys.stdout.flush()
-
-    # Then we can execute the task.
-    file_dir_path = os.path.dirname(os.path.abspath(__file__))
-    path_to_model_file = os.path.join(file_dir_path, "../../stochoptim/inst/extdata/birth_death_REMAImodel.R")
-    path_to_model_data_file = os.path.join(file_dir_path, "../../stochoptim/inst/extdata/birth_death_REdata0.txt")
-    path_to_final_data_file = os.path.join(file_dir_path, "../../stochoptim/inst/extdata/birth_death_REdata.txt")
-    params = {
-        'credentials':{'EC2_ACCESS_KEY':access_key, 'EC2_SECRET_KEY':secret_key},
-        "key_prefix": keypair_name,
-        "job_type": "mcem2",
-        "cores": cores_to_use,
-        "model_file": open(path_to_model_file, 'r').read(),
-        "model_data": {
-            "extension": "txt",
-            "content": open(path_to_model_data_file, 'r').read()
-        },
-        "final_data": {
-            "extension": "txt",
-            "content": open(path_to_final_data_file, 'r').read()
-        },
-        "bucketname": "cjktestingstochoptim",
-        "paramstring": "exec/cedwssa.r --K.ce 1e5 --K.prob 1e6"
-    }
-
-    print "\nCalling execute_task now..."
-    sys.stdout.flush()
-    result = backend.execute_task(params)
-
-    if result["success"]:
-        print "Succeeded..."
-        celery_id = result["celery_pid"]
-        queue_name = result["queue"]
-
-        # call the poll task process
-        poll_task_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "poll_task.py")
-        os.system("python {0} {1} {2} > poll_task_{1}.log 2>&1".format(poll_task_path, celery_id, queue_name))
-        task_id = result["db_id"]
-
-        describe_task_params = {
-            "AWS_ACCESS_KEY_ID": access_key,
-            "AWS_SECRET_ACCESS_KEY": secret_key,
-            "taskids": [task_id]
-        }
-
-        print "\nCalling describe_task..."
-        desc_result = backend.describe_task(describe_task_params)[task_id]
-
-        while desc_result["status"] != "finished":
-            if "output" in desc_result:
-                print "[{0}] [{1}] [{2}] [{3}]".format(
-                    desc_result["taskid"],
-                    desc_result["status"],
-                    desc_result["message"],
-                    desc_result["output"]
-                )
-            elif "message" in desc_result:
-                print "[{0}] [{1}] [{2}]".format(
-                    desc_result["taskid"],
-                    desc_result["status"],
-                    desc_result["message"]
-                )
-            else:
-                print "[{0}] [{1}]".format(
-                    desc_result["taskid"],
-                    desc_result["status"]
-                )
-
-            time.sleep(60)
-            print "\nCalling describeTask..."
-            desc_result = backend.describe_task(describe_task_params)[task_id]
-
-        print "Finished..."
-        print desc_result["output"]
-        terminate_params = {
-            "infrastructure": backend.INFRA_EC2,
-            "credentials": credentials,
-            "key_prefix": keypair_name
-        }
-
-        print "\nStopping all VMs..."
-
-        if backend.terminate_machines(terminate_params):
-            print "Stopped all machines!"
-        else:
-            print "Failed to stop machines..."
-
+    if backend.is_queue_head_running(compute_check_params):
+        print bcolors.OKGREEN + 'Queue Head running = True' + bcolors.ENDC
     else:
-        print "Failed..."
-        if "exception" in result:
-            print result["exception"]
-            print result["traceback"]
-        else:
-            print result["reason"]
+        print bcolors.FAIL + 'Queue Head running = False' + bcolors.ENDC
+        return
 
-##########################################
-##########################################
-def test_stochss(backend, params, start_vms=False):
-    '''
-    This tests a stochkit job using a local run (2 tasks)
-    and a cloud run (2 tasks)
-    It can also test describe* and start/stop Machines
-    '''
+    print 'describe_machines:', backend.describe_machines(params)
 
-    if backend.validate_credentials(params) :
-        print bcolors.FAIL + 'startMachines is commented out, make sure you have one+ started!' + bcolors.ENDC
+    with open('examples/dimer_decay.xml', 'r') as xmlfile:
+        model_xml_doc = xmlfile.read()
 
-        if start_vms:
-            res = backend.start_machines(params)
-            if res is None or not res['success'] :
-                raise TypeError("Error, start_machines failed!")
-            print bcolors.OKGREEN + 'start_machines succeeded ' + str(res) +  bcolors.ENDC
-            print 'started VMs, sleeping for a couple minutes to allow for initialization'
+    print '\ntesting cloud task execution...'
 
-            # for aws status checks
-            time.sleep(120)
+    taskargs = {}
+    pids = []
 
-        print 'describe_machines outputs to the testoutput.log file'
-        backend.describe_machines(params)
+    taskargs['AWS_ACCESS_KEY_ID'] = credentials['EC2_ACCESS_KEY']
+    taskargs['AWS_SECRET_ACCESS_KEY'] = credentials['EC2_SECRET_KEY']
 
-        # this is only used for cloud task deployment, this verifies that table can be created with creds
-        credentials = params['credentials']
+    NUMTASKS = 2
+    for pid in range(NUMTASKS):
+        taskargs['paramstring'] = 'StochKit/ssa -t 100 -i 100 -r 100 --keep-trajectories --seed 706370 --label'
+        taskargs['document'] = model_xml_doc
 
-        os.environ["AWS_ACCESS_KEY_ID"] = credentials['EC2_ACCESS_KEY']
-        os.environ["AWS_SECRET_ACCESS_KEY"] = credentials['EC2_SECRET_KEY']
+        # make this unique across all names/users in S3!
+        # bug in stochss: if the bucketname is aleady in s3,
+        # tasks run but never update their results in s3 (silent failur)
+        # taskargs['bucketname'] = 'stochsstestbucket2'
 
-        print 'access key: ' + os.environ["AWS_ACCESS_KEY_ID"]
-        dynamodb.create_table(backendservices.TABLE_NAME)
+        # options for job_type are stochkit (ssa), stochkit-ode (ode),
+        # and mcem2 (for paramsweep/stochoptim)
+        taskargs['job_type'] = 'stochkit'
 
-        # Test that local tasks execute and can be deleted
-        # NOTE: dimer_decay.xml must be in this local dir
-        xmlfile = open('dimer_decay.xml','r')
-        doc = xmlfile.read()
-        xmlfile.close()
+        # sometimes it takes awhile for machine to be ready
+        # if this fails with connection refused
+        # and you just started a VM recently, then leave the VM up and
+        # retry (comment out startMachine above)
+        cloud_result = backend.execute_task(taskargs)
 
-        ############################
-        print 'testing local task execution...'
-        taskargs = {}
-        pids = []
-        NUMTASKS = 2
+        print bcolors.OKGREEN + 'cloud_result on executeTask: ' + str(cloud_result) + bcolors.ENDC
+        if not cloud_result['success']:
+            print bcolors.FAIL + 'executeTask failed!' + bcolors.ENDC
+            sys.exit(1)
 
-        for pid in range(NUMTASKS):
-            taskargs['paramstring'] = 'ssa -t 100 -i 10 -r 10 --keep-trajectories --seed 706370 --label'
-            taskargs['document'] = doc
+        res = cloud_result['celery_pid']
+        taskid = cloud_result['db_id']
+        pids.append(taskid)
 
-            #options for job_type are stochkit (ssa), stochkit-ode (ode), 
-            #and mcem2 (for paramsweep/stochoptim)
-            taskargs['job_type'] = 'stochkit'
+    #check each task's status
+    taskargs['taskids'] = pids
+    done = {}
+    count = NUMTASKS
 
-            res = backend.execute_local_task(taskargs)
-            if res is not None:
-                print 'task {0} local results: {1}'.format(str(pid),str(res))
-                pids.append(res['pid'])
-                print
-                print 'number of pids: {0} {1}'.format(str(len(pids)),str(pids))
+    while len(done) < count:
+        for pid in pids:
+            task_status = backend.describe_task(taskargs)
+            job_status = task_status[pid]  #may be None
 
-            res  = backend.check_local_task_status(pids)
-            if res is not None:
-                print 'status: {0}'.format(str(res))
+            if job_status is not None:
+                print 'task id {0} status: {1}'.format(str(pid), job_status['status'])
 
-            time.sleep(5) # need to sleep here to allow for process spawn
-            print 'deleting pids: {0}'.format(str(pids))
-            backend.delete_local_task(pids)
-
-        ############################
-        print '\ntesting cloud task execution...'
-
-        taskargs = {}
-        pids = []
-
-        taskargs['AWS_ACCESS_KEY_ID'] = credentials['EC2_ACCESS_KEY']
-        taskargs['AWS_SECRET_ACCESS_KEY'] = credentials['EC2_SECRET_KEY']
-
-        NUMTASKS = 2
-        for pid in range(NUMTASKS):
-            taskargs['paramstring'] = 'ssa -t 100 -i 100 -r 100 --keep-trajectories --seed 706370 --label'
-            taskargs['document'] = doc
-
-            # make this unique across all names/users in S3!
-            # bug in stochss: if the bucketname is aleady in s3,
-            # tasks run but never update their results in s3 (silent failur)
-            # taskargs['bucketname'] = 'stochsstestbucket2'
-
-            # options for job_type are stochkit (ssa), stochkit-ode (ode),
-            # and mcem2 (for paramsweep/stochoptim)
-            taskargs['job_type'] = 'stochkit'
-
-            # sometimes it takes awhile for machine to be ready
-            # if this fails with connection refused
-            # and you just started a VM recently, then leave the VM up and
-            # retry (comment out startMachine above)
-            cloud_result = backend.execute_task(taskargs)
-
-            print bcolors.OKGREEN + 'cloud_result on executeTask: ' + str(cloud_result) +  bcolors.ENDC
-            if not cloud_result['success']:
-                print bcolors.FAIL + 'executeTask failed!' + bcolors.ENDC
-                sys.exit(1)
-
-            res = cloud_result['celery_pid']
-            taskid = cloud_result['db_id']
-            pids.append(taskid)
-
-        #check each task's status
-        taskargs['taskids'] = pids
-        done = {}
-        count = NUMTASKS
-
-        while len(done) < count :
-            for pid in pids:
-                task_status = backend.describe_task(taskargs)
-                job_status = task_status[pid]  #may be None
-
-                if job_status is not None:
-                    print 'task id {0} status: {1}'.format(str(pid),job_status['status'])
-
-                    if job_status['status'] == 'finished':
-                        print 'cloud job {0} is finished, output: '.format(str(pid))
-                        print job_status['output']
-                        done[pid] = True
+                if job_status['status'] == 'finished':
+                    print 'cloud job {0} is finished, output: '.format(str(pid))
+                    print job_status['output']
+                    done[pid] = True
 
                     #don't kill off tasks, wait for them to finish
                     #this code hasn't been tested in awhile
@@ -1157,96 +1206,44 @@ def test_stochss(backend, params, start_vms=False):
                     #count = count - 1
                     #backend.deleteTasks([i])
 
-                else:
-                    print 'task id {0} status is None'.format(str(pid))
+            else:
+                print 'task id {0} status is None'.format(str(pid))
 
-            print '{0} jobs have finished!\n'.format(len(done))
+        print '{0} jobs have finished!\n'.format(len(done))
 
-        ############################
-        #this terminates instances associated with this users creds and KEYPREFIX keyname prefix
-        print 'terminate_machines outputs to the testoutput.log file'
-        #print 'terminate_machines is commented out -- be sure to terminate your instances or uncomment!'
-        if backend.terminate_machines(params):
-            print 'Terminated all machines!'
-        else:
-            print 'Failed to terminate machines...'
+    ############################
+    # this terminates instances associated with this users creds and KEYPREFIX keyname prefix
+    print 'terminate_machines outputs to the testoutput.log file'
+    # print 'terminate_machines is commented out -- be sure to terminate your instances or uncomment!'
+    if backend.terminate_machines(params):
+        print 'Terminated all machines!'
+    else:
+        print 'Failed to terminate machines...'
+    backend.describe_machines(params)
 
-        backend.describe_machines(params)
 
 ##########################################
 ##########################################
 
 if __name__ == "__main__":
-
-    '''Note that these must be set for this function to work properly:
-        export STOCHSS_HOME=/path/to/stochss/git/dir/stochss
-        export PYTHONPATH=${STOCHSS_HOME}:.:..
-        export PATH=${PATH}:${STOCHSS_HOME}/StochKit
+    '''
+    Note that these must be set for this function to work properly:
+    export STOCHSS_HOME=/path/to/stochss/git/dir/stochss
+    export PYTHONPATH=${STOCHSS_HOME}:.:..
+    export PATH=${PATH}:${STOCHSS_HOME}/StochKit
     '''
 
-    logging.basicConfig(filename='testoutput.log',filemode='w',level=logging.DEBUG)
-    try:
-       access_key = os.environ["AWS_ACCESS_KEY"]
-       secret_key = os.environ["AWS_SECRET_KEY"]
-    except KeyError:
-       print "main: Environment variables EC2_ACCESS_KEY and EC2_SECRET_KEY not set, cannot continue"
-       sys.exit(1)
+    logging.basicConfig(filename='testoutput.log', filemode='w', level=logging.DEBUG)
 
-    os.environ["AWS_ACCESS_KEY_ID"] = access_key
-    os.environ["AWS_SECRET_ACCESS_KEY"] = secret_key
+    # test_stochss_local()
 
-    # infra = backendservices.INFRA_EC2
-    backend = backendservices()
-    credentials = {
-      'EC2_ACCESS_KEY': access_key,
-      'EC2_SECRET_KEY': secret_key
-    }
-    compute_check_params = {
-        "infrastructure": backend.INFRA_EC2,
-        "credentials": credentials
-    }
-    print bcolors.OKGREEN + 'is Q running? ' + \
-        str(backend.is_queue_head_running(compute_check_params)) + \
-        bcolors.ENDC
-    print bcolors.OKGREEN + 'valid creds? ' + \
-        str(backend.validate_credentials(compute_check_params)) + \
-        bcolors.ENDC
-    #comment this next line out to run the next test
-    #sys.exit(1)
+    start_vms = False
+    key_name = 'stochss-test-1-queuehead'
+    security_group = 'stochss-test-1-queuehead'
+    test_stochss_cloud(start_vms=start_vms, key_name=key_name, security_group=security_group)
 
-    ##### run this part to test stochoptim (parameter estimation code) #####
-    #NOTE: Uncomment this to test stochkit2 job run
-    params = {}
-    params['credentials'] = credentials
-    params['infrastructure'] = backend.INFRA_EC2
-    params['num_vms'] = 1
-    params['group'] = 'stochss' 
-
-    #this is used for workers.  its overridden for head node in
-    #agents/ec2_agent.py to be c3.large b/c we need more resources there
-    #head node is also used as a worker node
-    params['instance_type'] = 't1.micro'
-    #stochss will prefix whatever keyname you give here: stochss_
-    params['keyname'] = 'testkey'
-    params['use_spot_instances'] = False
-    if params['infrastructure'] == backendservices.INFRA_EC2 :
-        params['image_id'] = backend.WORKER_AMIS[backend.INFRA_EC2]
-    else :
-        raise TypeError("Error, unexpected infrastructure type: "+params['infrastructure'])
-
-    print 'valid creds? '+str(backend.validate_credentials(params))
-    print 'for params: '+str(params)
-
-    #print 'Exiting main... remove this if you would like to continue testing'
-    #sys.exit(0)
-
-    print 'Running StochKit Tests'
-    #teststochss(backend,params)
-
-'''
-    print 'Running StochOptim Tests'
-    sys.stdout.flush()
-    #I haven't gotten this to work for me yet, but have run out of time
-    #trying to investigate.  Pushing this to Mengyuan's task list - Chandra 7/23/14
-    test_stochoptim(backend,compute_check_params)
-'''
+    # print 'Running StochOptim Tests'
+    # sys.stdout.flush()
+    # #I haven't gotten this to work for me yet, but have run out of time
+    # #trying to investigate.  Pushing this to Mengyuan's task list - Chandra 7/23/14
+    # test_stochoptim(backend,compute_check_params)
