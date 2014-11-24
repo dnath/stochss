@@ -32,7 +32,7 @@ class backendservices():
     INFRA_EC2 = 'ec2'
     INFRA_CLUSTER = 'cluster'
     WORKER_AMIS = {
-        INFRA_EC2: 'ami-583fac30'
+        INFRA_EC2: 'ami-d00092b8'
     }
 
     def __init__(self, **kwargs):

@@ -232,7 +232,7 @@ class CredentialsPage(BaseHandler):
                     "infrastructure": "ec2",
                     "num_vms": number_of_vms,
                     'group': group_random_name,
-                    'image_id': 'ami-583fac30',
+                    'image_id': 'ami-d00092b8',
                     'instance_type': 'm1.small',
                     'key_prefix': key_prefix,
                     'keyname': group_random_name,

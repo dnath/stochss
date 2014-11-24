@@ -36,6 +36,8 @@ print "Running model"
 results = sol.run(number_of_trajectories=int(num_runs), seed=int(seed))
 
 print "Writing out results"
+if not os.path.exists(output_dir):
+    os.system('mkdir -p {0}'.format(output_dir))
 if isinstance(results, list):
     for i,r in enumerate(results):
         with open('{0}/result{1}'.format(output_dir,i),'w') as fd:
