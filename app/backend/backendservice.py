@@ -32,7 +32,7 @@ class backendservices():
     INFRA_EC2 = 'ec2'
     INFRA_CLUSTER = 'cluster'
     WORKER_AMIS = {
-        INFRA_EC2: 'ami-d00092b8'
+        INFRA_EC2: 'ami-2c0a9844'
     }
 
     def __init__(self, **kwargs):
@@ -719,14 +719,14 @@ class backendservices():
             else:
                 raise Exception("Failure to start celery on {0}".format(ip))
 
-    def __start_celery_on_machine_via_ssh(self, user, ip, key_file_path):
+    def __start_celery_on_machine_via_ssh(self, user, ip, key_file_path, aws_credentials):
         print 'inside __start_celery_on_machine_via_ssh'
 
         commands = []
         commands.append('source /home/ubuntu/.bashrc')
         commands.append('export PYTHONPATH=/home/ubuntu/pyurdme/:/home/ubuntu/stochss/app/:/home/ubuntu/stochss/app/backend')
-        # commands.append('export AWS_ACCESS_KEY_ID={0}'.format(str(credentials['EC2_ACCESS_KEY'])))
-        # commands.append('export AWS_SECRET_ACCESS_KEY={0}'.format(str(credentials['EC2_SECRET_KEY'])))
+        commands.append('export AWS_ACCESS_KEY_ID={0}'.format(str(aws_credentials['EC2_ACCESS_KEY'])))
+        commands.append('export AWS_SECRET_ACCESS_KEY={0}'.format(str(aws_credentials['EC2_SECRET_KEY'])))
         commands.append('celery -A tasks worker --autoreload --loglevel=info --workdir /home/ubuntu > /home/ubuntu/celery.log 2>&1')
 
         # PyURDME must be run inside a 'screen' terminal as part of the FEniCS code depends on the ability to write to the process' terminal, screen provides this terminal.
@@ -958,6 +958,21 @@ class backendservices():
             raise Exception("Need at least one master!")
 
         try:
+           access_key = os.environ["AWS_ACCESS_KEY"]
+           secret_key = os.environ["AWS_SECRET_KEY"]
+        except KeyError:
+           print "main: Environment variables AWS_ACCESS_KEY and AWS_SECRET_KEY not set, cannot continue"
+           sys.exit(1)
+
+        if not os.environ.has_key("AWS_ACCESS_KEY_ID"):
+            os.environ["AWS_ACCESS_KEY_ID"] = access_key
+        if not os.environ.has_key("AWS_SECRET_ACCESS_KEY"):
+            os.environ["AWS_SECRET_ACCESS_KEY"] = secret_key
+
+        credentials = {'EC2_ACCESS_KEY': access_key,
+                       'EC2_SECRET_KEY': secret_key}
+
+        try:
             self.__update_celery_config_with_queue_head_ip(queue_head_ip=master_machine["ip"])
             logging.info("Updated celery config with queue head ip: {0}".format(master_machine["ip"]))
 
@@ -967,7 +982,8 @@ class backendservices():
 
             self.__start_celery_on_machine_via_ssh(user=master_machine["user"],
                                                    ip=master_machine["ip"],
-                                                   key_file_path=master_machine["key_file_path"])
+                                                   key_file_path=master_machine["key_file_path"],
+                                                   aws_credentials=credentials)
 
             for slave_machine in slave_machines:
                 self.__copy_celery_config_to_machine(user=slave_machine["user"],
@@ -976,23 +992,11 @@ class backendservices():
 
                 self.__start_celery_on_machine_via_ssh(user=slave_machine["user"],
                                                        ip=slave_machine["ip"],
-                                                       key_file_path=slave_machine["key_file_path"])
+                                                       key_file_path=slave_machine["key_file_path"],
+                                                       aws_credentials=credentials)
 
 
-            try:
-               access_key = os.environ["AWS_ACCESS_KEY"]
-               secret_key = os.environ["AWS_SECRET_KEY"]
-            except KeyError:
-               print "main: Environment variables AWS_ACCESS_KEY and AWS_SECRET_KEY not set, cannot continue"
-               sys.exit(1)
 
-            if not os.environ.has_key("AWS_ACCESS_KEY_ID"):
-                os.environ["AWS_ACCESS_KEY_ID"] = access_key
-            if not os.environ.has_key("AWS_SECRET_ACCESS_KEY"):
-                os.environ["AWS_SECRET_ACCESS_KEY"] = secret_key
-
-            credentials = {'EC2_ACCESS_KEY': access_key,
-                           'EC2_SECRET_KEY': secret_key}
 
             # These are commutative commands
             commands = []
@@ -1020,16 +1024,19 @@ class backendservices():
             commands.append('echo export STOCHKIT_HOME={0} >> ~/.bashrc'.format("/home/ubuntu/stochss/StochKit/"))
             commands.append('echo export STOCHKIT_ODE={0} >> ~/.bashrc'.format("/home/ubuntu/stochss/ode/"))
 
+            commands.append('echo export C_FORCE_ROOT=1 >> ~/.bashrc')
+            commands.append('echo export C_FORCE_ROOT=1 >> /home/ubuntu/.bashrc')
+
             commands.append('source ~/.bashrc')
 
             command = ';'.join(commands)
             for machine in machine_info["machines"]:
                 if machine['type'] == 'master':
-                    celery_commands = []
-                    celery_commands.append('sudo rabbitmqctl add_user stochss ucsb')
-                    celery_commands.append('sudo rabbitmqctl set_permissions -p / stochss \\\".*\\\" \\\".*\\\" \\\".*\\\"')
+                    rabbitmq_commands = []
+                    rabbitmq_commands.append('sudo rabbitmqctl add_user stochss ucsb')
+                    rabbitmq_commands.append('sudo rabbitmqctl set_permissions -p / stochss \\\".*\\\" \\\".*\\\" \\\".*\\\"')
 
-                    updated_command = ';'.join(commands + celery_commands)
+                    updated_command = ';'.join(commands + rabbitmq_commands)
 
                     remote_command = "ssh -o 'StrictHostKeyChecking no' -i {key_file} {user}@{ip} \"{cmd}\"".format(
                                                                                     key_file=machine["key_file_path"],
@@ -1045,6 +1052,15 @@ class backendservices():
 
                 logging.debug("Initializing RabbitMQ: {0}".format(remote_command))
                 os.system(remote_command)
+
+                test_cmd = '. ~/.bashrc; echo a = $AWS_ACCESS_KEY_ID  s = $AWS_SECRET_ACCESS_KEY'
+                test_rmt_cmd = "ssh -o 'StrictHostKeyChecking no' -i {key_file} {user}@{ip} '{cmd}'".format(
+                                                                                    key_file=machine["key_file_path"],
+                                                                                    user=machine["user"],
+                                                                                    ip=machine["ip"],
+                                                                                    cmd=test_cmd)
+                print test_rmt_cmd
+                os.system(test_rmt_cmd)
 
             return { "success": True }
 

@@ -521,6 +521,8 @@ def task(task_id, params):
     '''
     This is the actual work done by a task worker
     '''
+    uuidstr = task_id
+
     try:
         print 'task to be executed at remote location'
         print 'inside celery task method'
@@ -530,7 +532,7 @@ def task(task_id, params):
 
         result = {}
         paramstr =  params['paramstring']
-        uuidstr = task_id
+
         result['uuid'] = uuidstr
         job_type = params['job_type']
 
