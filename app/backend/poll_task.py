@@ -7,25 +7,10 @@ from time import sleep
 import tasks
 from celery.result import AsyncResult
 
-def get_workers_consuming_from_queue(from_queue):
-    '''
-    Returns a list of the names of all workers that are consuming from the
-    from_queue, or an empty list if no workers are consuming from the queue.
-    '''
-    worker_names = []
-    app = tasks.CelerySingleton().app
-
-    all_worker_assignments = app.control.inspect().active_queues()
-
-    for worker_name in all_worker_assignments:
-        worker_queues = all_worker_assignments[worker_name]
-        for queue in worker_queues:
-            if queue["name"] == from_queue:
-                worker_names.append(worker_name)
-
-    return worker_names
-
 def poll_task(task_id, queue_name):
+    # Get the Celery app
+    celery_app = tasks.CelerySingleton().app
+
     # Get the task
     result = AsyncResult(task_id)
 

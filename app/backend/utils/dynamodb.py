@@ -52,7 +52,7 @@ def create_table(table_name=str()):
 
     try:
         print 'connecting to dynamodb'
-        dynamo=boto.connect_dynamodb()
+        dynamo = boto.connect_dynamodb()
 
         #check if table already exists
         print 'checking if table {0} exists'.format(table_name)

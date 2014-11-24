@@ -247,11 +247,13 @@ class StochOptimPage(BaseHandler):
                 if self.user_data.valid_credentials and backend_services.is_one_or_more_compute_nodes_running(compute_check_params):
                     result = self.runCloud(data)
                     logging.info("Run cloud finished with result: {0}, generating JSON response".format(result))
+
                     if not result["success"]:
                         return self.response.write(json.dumps({
                             "status": False,
                             "msg": result["msg"]
                         }))
+
                     else:
                         return self.response.write(json.dumps({
                             "status": True,

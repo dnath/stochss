@@ -2,15 +2,14 @@ from base_agent import BaseAgent, AgentConfigurationException, AgentRuntimeExcep
 import sys,os,traceback
 sys.path.append(os.path.join(os.path.dirname(__file__), '../../lib/boto'))
 sys.path.append(os.path.join(os.path.dirname(__file__), '../'))
-#print sys.path
+
 import boto
 from boto.exception import EC2ResponseError
 import datetime
 import os
-import time,uuid
+import time
 from boto.ec2.cloudwatch import MetricAlarm
 from utils import utils
-from uuid import uuid4
 import logging
 
 __author__ = 'hiranya, anand'
@@ -248,23 +247,59 @@ class EC2Agent(BaseAgent):
 
     credentials = parameters[self.PARAM_CREDENTIALS]
     creds = parameters['credentials']
-    f = open('userfile','w')
-    userstr  = """#!/bin/bash \nset -x\nexec > >(tee /var/log/user-data.log|logger -t user-data -s 2>/dev/console) 2>&1\ntouch anand3.txt\necho "testing logfile"\necho BEGIN\ndate '+%Y-%m-%d %H:%M:%S'\necho END\ntouch anand2.txt\n"""
-    userstr+='export AWS_ACCESS_KEY_ID={0}\n'.format(str(credentials['EC2_ACCESS_KEY']))
-    userstr+='export AWS_SECRET_ACCESS_KEY={0}\n'.format( str(credentials['EC2_SECRET_KEY']))
-    userstr+='echo export AWS_ACCESS_KEY_ID={0} >> ~/.bashrc\n'.format(str(credentials['EC2_ACCESS_KEY']))
-    userstr+='echo export AWS_SECRET_ACCESS_KEY={0} >> ~/.bashrc\n'.format( str(credentials['EC2_SECRET_KEY']))
-    userstr+='echo export AWS_ACCESS_KEY_ID={0} >> /home/ubuntu/.bashrc\n'.format(str(credentials['EC2_ACCESS_KEY']))   
-    userstr+='echo export AWS_SECRET_ACCESS_KEY={0} >> /home/ubuntu/.bashrc\n'.format( str(credentials['EC2_SECRET_KEY']))
 
-    userstr+='export STOCHKIT_HOME={0}\n'.format('/home/ubuntu/StochKit/')
-    userstr+='export STOCHKIT_ODE={0}\n'.format('/home/ubuntu/ode/')
-    userstr+='echo export STOCHKIT_HOME={0} >> ~/.bashrc\n'.format("/home/ubuntu/StochKit/")
-    userstr+='echo export STOCHKIT_HOME={0} >> /home/ubuntu/.bashrc\n'.format("/home/ubuntu/StochKit/")
-    userstr+='echo export STOCHKIT_ODE={0} >> ~/.bashrc\n'.format("/home/ubuntu/ode/")
-    userstr+='echo export STOCHKIT_ODE={0} >> /home/ubuntu/.bashrc\n'.format("/home/ubuntu/ode/")
-    userstr+='source ~/.bashrc \n'
-    userstr+='source /home/ubuntu/.bashrc \n'
+    f = open('userfile', 'w')
+
+    commands = []
+    commands.append("#!/bin/bash")
+    commands.append("set -x")
+    commands.append("exec > >(tee /var/log/user-data.log|logger -t user-data -s 2>/dev/console) 2>&1")
+    commands.append("touch anand3.txt")
+    commands.append("echo testing logfile")
+    commands.append("echo BEGIN")
+    commands.append("date '+%Y-%m-%d %H:%M:%S'")
+    commands.append("echo END")
+    commands.append("touch anand2.txt")
+
+    commands.append('export AWS_ACCESS_KEY_ID={0}'.format(str(credentials['EC2_ACCESS_KEY'])))
+    commands.append('export AWS_SECRET_ACCESS_KEY={0}'.format( str(credentials['EC2_SECRET_KEY'])))
+
+    commands.append('echo export AWS_ACCESS_KEY_ID={0} >> ~/.bashrc'.format(str(credentials['EC2_ACCESS_KEY'])))
+    commands.append('echo export AWS_SECRET_ACCESS_KEY={0} >> ~/.bashrc'.format( str(credentials['EC2_SECRET_KEY'])))
+
+    commands.append('echo export AWS_ACCESS_KEY_ID={0} >> /home/ubuntu/.bashrc'.format(str(credentials['EC2_ACCESS_KEY'])))
+    commands.append('echo export AWS_SECRET_ACCESS_KEY={0} >> /home/ubuntu/.bashrc'.format( str(credentials['EC2_SECRET_KEY'])))
+
+    commands.append('export STOCHKIT_HOME={0}'.format('/home/ubuntu/stochss/StochKit/'))
+    commands.append('export STOCHKIT_ODE={0}'.format('/home/ubuntu/stochss/ode/'))
+
+    commands.append('echo export STOCHKIT_HOME={0} >> ~/.bashrc'.format("/home/ubuntu/stochss/StochKit/"))
+    commands.append('echo export STOCHKIT_ODE={0} >> ~/.bashrc'.format("/home/ubuntu/stochss/ode/"))
+
+    commands.append('echo export STOCHKIT_HOME={0} >> /home/ubuntu/.bashrc'.format("/home/ubuntu/stochss/StochKit/"))
+    commands.append('echo export STOCHKIT_ODE={0} >> /home/ubuntu/.bashrc'.format("/home/ubuntu/stochss/ode/"))
+
+    commands.append('source ~/.bashrc')
+
+    commands.append('source /home/ubuntu/.bashrc')
+
+    userstr  = """#!/bin/bash \nset -x\nexec > >(tee /var/log/user-data.log|logger -t user-data -s 2>/dev/console) 2>&1\ntouch anand3.txt\necho "testing logfile"\necho BEGIN\ndate '+%Y-%m-%d %H:%M:%S'\necho END\ntouch anand2.txt\n"""
+    # userstr+='export AWS_ACCESS_KEY_ID={0}\n'.format(str(credentials['EC2_ACCESS_KEY']))
+    # userstr+='export AWS_SECRET_ACCESS_KEY={0}\n'.format( str(credentials['EC2_SECRET_KEY']))
+    # userstr+='echo export AWS_ACCESS_KEY_ID={0} >> ~/.bashrc\n'.format(str(credentials['EC2_ACCESS_KEY']))
+    # userstr+='echo export AWS_SECRET_ACCESS_KEY={0} >> ~/.bashrc\n'.format( str(credentials['EC2_SECRET_KEY']))
+    # userstr+='echo export AWS_ACCESS_KEY_ID={0} >> /home/ubuntu/.bashrc\n'.format(str(credentials['EC2_ACCESS_KEY']))
+    # userstr+='echo export AWS_SECRET_ACCESS_KEY={0} >> /home/ubuntu/.bashrc\n'.format( str(credentials['EC2_SECRET_KEY']))
+    #
+    # userstr+='export STOCHKIT_HOME={0}\n'.format('/home/ubuntu/StochKit/')
+    # userstr+='export STOCHKIT_ODE={0}\n'.format('/home/ubuntu/ode/')
+    # userstr+='echo export STOCHKIT_HOME={0} >> ~/.bashrc\n'.format("/home/ubuntu/StochKit/")
+    # userstr+='echo export STOCHKIT_HOME={0} >> /home/ubuntu/.bashrc\n'.format("/home/ubuntu/StochKit/")
+    # userstr+='echo export STOCHKIT_ODE={0} >> ~/.bashrc\n'.format("/home/ubuntu/ode/")
+    # userstr+='echo export STOCHKIT_ODE={0} >> /home/ubuntu/.bashrc\n'.format("/home/ubuntu/ode/")
+    # userstr+='source ~/.bashrc \n'
+    # userstr+='source /home/ubuntu/.bashrc \n'
+
     # Workers need an alarm...
     skip_alarm = False
     if self.PARAM_QUEUE_HEAD in parameters and parameters[self.PARAM_QUEUE_HEAD]:
@@ -274,11 +309,15 @@ class EC2Agent(BaseAgent):
       insufficient_cores = ['t1.micro', 'm1.small', 'm1.medium', 'm3.medium']
       if instance_type in insufficient_cores:
         instance_type = 'c3.large'
+
       # Create the user that we want to use to connect to the broker
       # and configure its permissions on the default vhost.
-      userstr += "rabbitmqctl add_user stochss ucsb\n"
-      userstr += 'rabbitmqctl set_permissions -p / stochss ".*" ".*" ".*"\n'
-      # userstr += "rabbitmq-server -detached\n"
+      commands.append('rabbitmqctl add_user stochss ucsb')
+      commands.append('rabbitmqctl set_permissions -p / stochss ".*" ".*" ".*"')
+      # userstr += "rabbitmqctl add_user stochss ucsb\n"
+      # userstr += 'rabbitmqctl set_permissions -p / stochss ".*" ".*" ".*"\n'
+      ## userstr += "rabbitmq-server -detached\n"
+
 ##    else:
 ##      # Update celery config file...it should have the correct IP
 ##      # of the Queue head node, which should already be running.
@@ -307,8 +346,11 @@ class EC2Agent(BaseAgent):
 ##      start_celery_str = "celery -A tasks worker --autoreload --loglevel=info --workdir /home/ubuntu > /home/ubuntu/celery.log 2>&1"
 ##    #userstr+="sudo -u ubuntu screen -d -m bash -c '{0}'\n".format(start_celery_str)  # PyURDME must be run inside a 'screen' terminal as part of the FEniCS code depends on the ability to write to the processe's terminal, screen provides this terminal.
 ##    userstr+="screen -d -m bash -c '{0}'\n".format(start_celery_str)  # PyURDME must be run inside a 'screen' terminal as part of the FEniCS code depends on the ability to write to the process' terminal, screen provides this terminal.
-    f.write(userstr)
+
+    command_string = '\n'.join(commands)
+    f.write(command_string)
     f.close()
+
     start_time = datetime.datetime.now()
     active_public_ips = []
     active_private_ips = []
@@ -316,6 +358,7 @@ class EC2Agent(BaseAgent):
 
     try:
       attempts = 1
+
       while True:
         instance_info = self.describe_instances_old(parameters)
         active_public_ips = instance_info[0]
@@ -335,17 +378,16 @@ class EC2Agent(BaseAgent):
       if spot == 'True':
         price = parameters[self.PARAM_SPOT_PRICE]
         conn.request_spot_instances(str(price), image_id, key_name=keyname,
-          security_groups=[group], instance_type=instance_type, count=count, user_data = userstr)
+          security_groups=[group], instance_type=instance_type, count=count, user_data=command_string)
       else:
         conn.run_instances(image_id, count, count, key_name=keyname,
-          security_groups=[group], instance_type=instance_type, user_data=userstr)
+          security_groups=[group], instance_type=instance_type, user_data=command_string)
 
       instance_ids = []
       public_ips = []
       private_ips = []
       utils.sleep(10)
-      end_time = datetime.datetime.now() + datetime.timedelta(0,
-        self.MAX_VM_CREATION_TIME)
+      end_time = datetime.datetime.now() + datetime.timedelta(0, self.MAX_VM_CREATION_TIME)
       now = datetime.datetime.now()
 
       while now < end_time:
@@ -358,14 +400,14 @@ class EC2Agent(BaseAgent):
         public_ips = utils.diff(public_ips, active_public_ips)
         private_ips = utils.diff(private_ips, active_private_ips)
         instance_ids = utils.diff(instance_ids, active_instances)
+
         if count == len(public_ips):
           break
         time.sleep(self.SLEEP_TIME)
         now = datetime.datetime.now()
 
       if not public_ips:
-        self.handle_failure('No public IPs were able to be procured '
-                            'within the time limit')
+        self.handle_failure('No public IPs were able to be procured within the time limit')
 
       if len(public_ips) != count:
         for index in range(0, len(public_ips)):
@@ -377,17 +419,19 @@ class EC2Agent(BaseAgent):
 
       end_time = datetime.datetime.now()
       total_time = end_time - start_time
+
       if spot:
-        utils.log('TIMING: It took {0} seconds to spawn {1} spot ' \
-                  'instances'.format(total_time.seconds, count))
+        utils.log('TIMING: It took {0} seconds to spawn {1} spot instances'.format(total_time.seconds, count))
+
       else:
-        utils.log('TIMING: It took {0} seconds to spawn {1} ' \
-                  'regular instances'.format(total_time.seconds, count))
+        utils.log('TIMING: It took {0} seconds to spawn {1} regular instances'.format(total_time.seconds, count))
         if not skip_alarm:
           utils.log('Creating Alarms for the instances')
           for machineid in instance_ids:
               self.make_sleepy(parameters, machineid)   
+
       return instance_ids, public_ips, private_ips
+
     except EC2ResponseError as exception:
       self.handle_failure('EC2 response error while starting VMs: ' +
                           exception.error_message)

@@ -722,7 +722,25 @@ def reroute_workers(worker_names, to_queue, from_queue="celery"):
     app = CelerySingleton().app
     app.control.cancel_consumer(from_queue, reply=True, destination=worker_names)
     app.control.add_consumer(to_queue, reply=True, destination=worker_names)
-    
+
+def get_workers_consuming_from_queue(from_queue):
+    '''
+    Returns a list of the names of all workers that are consuming from the
+    from_queue, or an empty list if no workers are consuming from the queue.
+    '''
+    worker_names = []
+    app = CelerySingleton().app
+
+    all_worker_assignments = app.control.inspect().active_queues()
+
+    for worker_name in all_worker_assignments:
+        worker_queues = all_worker_assignments[worker_name]
+        for queue in worker_queues:
+            if queue["name"] == from_queue:
+                worker_names.append(worker_name)
+
+    return worker_names
+
 if __name__ == "__main__":
     '''
     NOTE: these must be set in your environment:
