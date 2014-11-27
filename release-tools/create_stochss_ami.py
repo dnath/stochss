@@ -97,13 +97,13 @@ class AmiCreator:
     self.__terminate_instance()
 
   def __create_ec2_connection(self):
-    if os.environ.has_key('AWS_ACCESS_KEY'):
-      aws_access_key = os.environ['AWS_ACCESS_KEY']
+    if os.environ.has_key('AWS_ACCESS_KEY_ID'):
+      aws_access_key = os.environ['AWS_ACCESS_KEY_ID']
     else:
       aws_access_key = raw_input("Please enter your AWS access key: ")
 
-    if os.environ.has_key('AWS_SECRET_KEY'):
-      aws_secret_key = os.environ['AWS_SECRET_KEY']
+    if os.environ.has_key('AWS_SECRET_ACCESS_KEY'):
+      aws_secret_key = os.environ['AWS_SECRET_ACCESS_KEY']
     else:
       aws_secret_key = raw_input("Please enter your AWS secret key: ")
 
