@@ -3,7 +3,7 @@ import boto
 import boto.s3
 from boto.s3.lifecycle import Lifecycle, Expiration
 
-class s3Agent():
+class AmazonS3Agent():
     def upload_file(self, file, bucket_name):
         try:
             lifecycle = Lifecycle()
@@ -40,5 +40,5 @@ if __name__ == '__main__':
 
     file = sys.argv[1]
     bucket_name = sys.argv[2]
-    obj = s3Agent()
-    obj.upload_file(file, bucket_name)
+    agent = AmazonS3Agent()
+    agent.upload_file(file, bucket_name)

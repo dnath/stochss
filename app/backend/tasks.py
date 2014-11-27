@@ -27,7 +27,7 @@ class TaskConfig:
     STOCHKIT_DIR = os.path.join(STOCHSS_HOME, 'StochKit')
     ODE_DIR = os.path.join(STOCHSS_HOME, 'ode')
     MCEM2_DIR = os.path.join(STOCHSS_HOME, 'stochoptim')
-    SCCPY_PATH = os.path.join(STOCHSS_HOME, 'app', 'backend', 'sccpy.py')
+    SCCPY_PATH = os.path.join(STOCHSS_HOME, 'app', 'backend', 'bin', 'sccpy.py')
 
 
 import logging
@@ -755,7 +755,7 @@ if __name__ == "__main__":
     TaskConfig.STOCHKIT_DIR = os.path.join(TaskConfig.STOCHSS_HOME, 'StochKit')
     TaskConfig.ODE_DIR = os.path.join(TaskConfig.STOCHSS_HOME, 'ode')
     TaskConfig.MCEM2_DIR = os.path.join(TaskConfig.STOCHSS_HOME, 'stochoptim')
-    TaskConfig.SCCPY_PATH = os.path.join(TaskConfig.STOCHSS_HOME, 'app', 'backend', 'sccpy.py')
+    TaskConfig.SCCPY_PATH = os.path.join(TaskConfig.STOCHSS_HOME, 'app', 'backend', 'bin', 'sccpy.py')
 
     if not os.environ.has_key("AWS_ACCESS_KEY_ID"):
         os.environ["AWS_ACCESS_KEY_ID"] = os.environ['AWS_ACCESS_KEY']
