@@ -46,7 +46,7 @@ class backendservices():
         sys.path.append(os.path.join(os.path.dirname(__file__), 
                                      '/Library/Python/2.7/site-packages/amqp'))
 
-    def is_queue_broker_up(self):
+    def __is_queue_broker_up(self):
         sleep_time = 5
         total_wait_time = 15
         total_tries = total_wait_time / sleep_time
@@ -88,7 +88,7 @@ class backendservices():
             # we don't want the user to try to submit a task and have it
             # timeout because the broker server isn't up yet.
 
-            is_broker_up, exception, traceback_str = self.is_queue_broker_up()
+            is_broker_up, exception, traceback_str = self.__is_queue_broker_up()
             if is_broker_up is False:
                 return {
                     "success": False,
@@ -627,31 +627,6 @@ class backendservices():
             else:
                 raise Exception("scp failure: {0} not transfered to {1}".format(celery_config_filename, ip))
 
-    def __copy_celery_config_to_machine(self, user, ip, key_file_path):
-        logging.debug("keyfile = {0}".format(key_file_path))
-
-        if not os.path.exists(key_file_path):
-            raise Exception("ssh keyfile file not found: {0}".format(key_file_path))
-
-        celery_config_filename = "{0}/{1}".format(os.path.dirname(__file__),"/celeryconfig.py")
-
-        if not os.path.exists(celery_config_filename):
-            raise Exception("celery config file not found: {0}".format(celery_config_filename))
-
-        # self.__wait_for_ssh_connection(key_file_path, ip)
-        cmd = "scp -o 'StrictHostKeyChecking no' -i {key_file_path} {file} {user}@{ip}:celeryconfig.py".format(
-                                                                                            key_file_path=key_file_path,
-                                                                                            file=celery_config_filename,
-                                                                                            user=user,
-                                                                                            ip=ip)
-        logging.info(cmd)
-
-        success = os.system(cmd)
-        if success == 0:
-            logging.info("scp success: {0} transfered to {1}".format(celery_config_filename, ip))
-        else:
-            raise Exception("scp failure: {0} not transfered to {1}".format(celery_config_filename, ip))
-
     def __wait_for_ssh_connection(self, keyfile, ip):
         SSH_RETRY_COUNT = 30
         SSH_RETRY_WAIT = 3
@@ -719,59 +694,6 @@ class backendservices():
             else:
                 raise Exception("Failure to start celery on {0}".format(ip))
 
-    def __start_celery_on_machine_via_ssh(self, user, ip, key_file_path, aws_credentials):
-        print 'inside __start_celery_on_machine_via_ssh'
-
-        commands = []
-        commands.append('source /home/ubuntu/.bashrc')
-        commands.append('export PYTHONPATH=/home/ubuntu/pyurdme/:/home/ubuntu/stochss/app/:/home/ubuntu/stochss/app/backend')
-        commands.append('export AWS_ACCESS_KEY_ID={0}'.format(str(aws_credentials['EC2_ACCESS_KEY'])))
-        commands.append('export AWS_SECRET_ACCESS_KEY={0}'.format(str(aws_credentials['EC2_SECRET_KEY'])))
-        commands.append('celery -A tasks worker --autoreload --loglevel=info --workdir /home/ubuntu > /home/ubuntu/celery.log 2>&1')
-
-        # PyURDME must be run inside a 'screen' terminal as part of the FEniCS code depends on the ability to write to the process' terminal, screen provides this terminal.
-        celery_cmd = "sudo screen -d -m bash -c '{0}'\n".format(';'.join(commands))
-
-        logging.info("keyfile = {0}".format(key_file_path))
-
-        if not os.path.exists(key_file_path):
-            raise Exception("ssh keyfile file not found: {0}".format(key_file_path))
-
-
-        command = "ssh -o 'StrictHostKeyChecking no' -i {key_file_path} {user}@{ip} \"{cmd}\"".format(key_file_path=key_file_path,
-                                                                                               user=user,
-                                                                                               ip=ip,
-                                                                                               cmd=celery_cmd)
-        logging.info(command)
-        success = os.system(command)
-
-        if success == 0:
-            logging.info("celery started on {0}".format(ip))
-        else:
-            raise Exception("Failure to start celery on {0}".format(ip))
-        
-    def terminate_machines(self, params, block=False):
-        '''
-        This method would terminate all the  instances associated with the account
-        that have a keyname prefixed with stochss (all instances created by the backend service)
-        params must contain credentials key/value
-        '''
-        key_prefix = self.KEY_PREFIX
-        if "key_prefix" in params and not params["key_prefix"].startswith(key_prefix):
-            key_prefix += params["key_prefix"]
-        elif "key_prefix" in params: 
-            key_prefix = params["key_prefix"]
-
-        try:
-            logging.info("Terminating compute nodes with key_prefix: {0}".format(key_prefix))
-            i = InfrastructureManager(blocking=block)
-            res = i.terminate_instances(params,key_prefix)
-            return True
-
-        except Exception, e:
-            logging.error("Terminate machine failed with error : %s", str(e))
-            return False
-    
     def describe_machines(self, params):
         '''
         This method gets the status of all the instances of ec2
@@ -896,217 +818,56 @@ class backendservices():
         except Exception, e:
             logging.error("fetchOutput : exiting with error : %s", str(e))
             return False
-    
+
+    def terminate_machines(self, params, block=False):
+        '''
+        This method would terminate all the  instances associated with the account
+        that have a keyname prefixed with stochss (all instances created by the backend service)
+        params must contain credentials key/value
+        '''
+        key_prefix = self.KEY_PREFIX
+        if "key_prefix" in params and not params["key_prefix"].startswith(key_prefix):
+            key_prefix += params["key_prefix"]
+        elif "key_prefix" in params:
+            key_prefix = params["key_prefix"]
+
+        try:
+            logging.info("Terminating compute nodes with key_prefix: {0}".format(key_prefix))
+            i = InfrastructureManager(blocking=block)
+            res = i.terminate_instances(params,key_prefix)
+            return True
+
+        except Exception, e:
+            logging.error("Terminate machine failed with error : %s", str(e))
+            return False
+
     def __update_celery_config_with_queue_head_ip(self, queue_head_ip):
         # Write queue_head_ip to file on the appropriate line
-        celery_config_filename = os.path.join(
-            os.path.dirname(os.path.abspath(__file__)),
-            "celeryconfig.py"
-        )
-        celery_template_filename = os.path.join(
-            os.path.dirname(os.path.abspath(__file__)),
-            "celeryconfig.py.template"
-        )
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        celery_config_filename = os.path.join(current_dir, "conf", "celeryconfig.py")
+        celery_template_filename = os.path.join(current_dir, "conf", "celeryconfig.py.template")
+
+        logging.debug("celery_config_filename = {0}".format(celery_config_filename))
+        logging.debug("celery_template_filename = {0}".format(celery_template_filename))
+
         celery_config_lines = []
-        with open(celery_template_filename, 'r') as celery_config_file:
+        with open(celery_template_filename) as celery_config_file:
             celery_config_lines = celery_config_file.readlines()
+
         with open(celery_config_filename, 'w') as celery_config_file:
             for line in celery_config_lines:
                 if line.strip().startswith('BROKER_URL'):
                     celery_config_file.write('BROKER_URL = "amqp://stochss:ucsb@{0}:5672/"\n'.format(queue_head_ip))
                 else:
                     celery_config_file.write(line)
+
         # Now update the actual Celery app....
         #TODO: Doesnt seem to work in GAE until next request comes in to server
         my_celery = CelerySingleton()
         my_celery.configure()
 
-    def prepare_machines(self, machine_info):
-        # options = {
-        #     "machines" : [
-        #         {
-        #             "ip": "w.x.y.z",
-        #             "user": "ubuntu",
-        #             "key_file_path": "/path/to/key/file",
-        #             "type": "master"
-        #         },
-        #         {
-        #             "ip": "w.x.y.z",
-        #             "user": "ubuntu",
-        #             "key_file_path": "/path/to/key/file",
-        #             "type": "slave"
-        #         }
-        #     ]
-        # }
-
-        logging.info("prepare_machines : inside method with machine_info : %s", str(machine_info))
-
-        master_machine = None
-        slave_machines = []
-        for machine in machine_info["machines"]:
-            if machine["type"] == "master":
-                if master_machine is not None:
-                    raise  Exception("There can be only one master !")
-                else:
-                    master_machine = machine
-            elif machine["type"] == "slave":
-                slave_machines.append(machine)
-            else:
-                raise Exception("Invalid machine type : {0} !".format(machine["type"]))
-
-        if master_machine == None:
-            raise Exception("Need at least one master!")
-
-        try:
-           access_key = os.environ["AWS_ACCESS_KEY"]
-           secret_key = os.environ["AWS_SECRET_KEY"]
-        except KeyError:
-           print "main: Environment variables AWS_ACCESS_KEY and AWS_SECRET_KEY not set, cannot continue"
-           sys.exit(1)
-
-        if not os.environ.has_key("AWS_ACCESS_KEY_ID"):
-            os.environ["AWS_ACCESS_KEY_ID"] = access_key
-        if not os.environ.has_key("AWS_SECRET_ACCESS_KEY"):
-            os.environ["AWS_SECRET_ACCESS_KEY"] = secret_key
-
-        credentials = {'EC2_ACCESS_KEY': access_key,
-                       'EC2_SECRET_KEY': secret_key}
-
-        try:
-            self.__update_celery_config_with_queue_head_ip(queue_head_ip=master_machine["ip"])
-            logging.info("Updated celery config with queue head ip: {0}".format(master_machine["ip"]))
-
-            self.__copy_celery_config_to_machine(user=master_machine["user"],
-                                                 ip=master_machine["ip"],
-                                                 key_file_path=master_machine["key_file_path"])
-
-            self.__start_celery_on_machine_via_ssh(user=master_machine["user"],
-                                                   ip=master_machine["ip"],
-                                                   key_file_path=master_machine["key_file_path"],
-                                                   aws_credentials=credentials)
-
-            for slave_machine in slave_machines:
-                self.__copy_celery_config_to_machine(user=slave_machine["user"],
-                                                 ip=slave_machine["ip"],
-                                                 key_file_path=slave_machine["key_file_path"])
-
-                self.__start_celery_on_machine_via_ssh(user=slave_machine["user"],
-                                                       ip=slave_machine["ip"],
-                                                       key_file_path=slave_machine["key_file_path"],
-                                                       aws_credentials=credentials)
 
 
-
-
-            # These are commutative commands
-            commands = []
-            # commands.append("set -x")
-            # commands.append("exec > >(tee /var/log/user-data.log|logger -t user-data -s 2>/dev/console) 2>&1")
-            # commands.append("touch anand3.txt")
-            # commands.append("echo testing logfile")
-            # commands.append("echo BEGIN")
-            # commands.append("date '+%Y-%m-%d %H:%M:%S'")
-            # commands.append("echo END")
-            # commands.append("touch anand2.txt")
-
-            commands.append('export AWS_ACCESS_KEY_ID={0}'.format(str(credentials['EC2_ACCESS_KEY'])))
-            commands.append('export AWS_SECRET_ACCESS_KEY={0}'.format( str(credentials['EC2_SECRET_KEY'])))
-
-            commands.append('echo export AWS_ACCESS_KEY_ID={0} >> ~/.bashrc'.format(str(credentials['EC2_ACCESS_KEY'])))
-            commands.append('echo export AWS_SECRET_ACCESS_KEY={0} >> ~/.bashrc'.format( str(credentials['EC2_SECRET_KEY'])))
-
-            commands.append('echo export AWS_ACCESS_KEY_ID={0} >> /home/ubuntu/.bashrc'.format(str(credentials['EC2_ACCESS_KEY'])))
-            commands.append('echo export AWS_SECRET_ACCESS_KEY={0} >> /home/ubuntu/.bashrc'.format( str(credentials['EC2_SECRET_KEY'])))
-
-            commands.append('export STOCHKIT_HOME={0}'.format('/home/ubuntu/stochss/StochKit/'))
-            commands.append('export STOCHKIT_ODE={0}'.format('/home/ubuntu/stochss/ode/'))
-
-            commands.append('echo export STOCHKIT_HOME={0} >> ~/.bashrc'.format("/home/ubuntu/stochss/StochKit/"))
-            commands.append('echo export STOCHKIT_ODE={0} >> ~/.bashrc'.format("/home/ubuntu/stochss/ode/"))
-
-            commands.append('echo export C_FORCE_ROOT=1 >> ~/.bashrc')
-            commands.append('echo export C_FORCE_ROOT=1 >> /home/ubuntu/.bashrc')
-
-            commands.append('source ~/.bashrc')
-
-            command = ';'.join(commands)
-            for machine in machine_info["machines"]:
-                if machine['type'] == 'master':
-                    rabbitmq_commands = []
-                    rabbitmq_commands.append('sudo rabbitmqctl add_user stochss ucsb')
-                    rabbitmq_commands.append('sudo rabbitmqctl set_permissions -p / stochss \\\".*\\\" \\\".*\\\" \\\".*\\\"')
-
-                    updated_command = ';'.join(commands + rabbitmq_commands)
-
-                    remote_command = "ssh -o 'StrictHostKeyChecking no' -i {key_file} {user}@{ip} \"{cmd}\"".format(
-                                                                                    key_file=machine["key_file_path"],
-                                                                                    user=machine["user"],
-                                                                                    ip=machine["ip"],
-                                                                                    cmd=updated_command)
-                else:
-                    remote_command = "ssh -o 'StrictHostKeyChecking no' -i {key_file} {user}@{ip} \"{cmd}\"".format(
-                                                                                    key_file=machine["key_file_path"],
-                                                                                    user=machine["user"],
-                                                                                    ip=machine["ip"],
-                                                                                    cmd=command)
-
-                logging.debug("Initializing RabbitMQ: {0}".format(remote_command))
-                os.system(remote_command)
-
-                test_cmd = '. ~/.bashrc; echo a = $AWS_ACCESS_KEY_ID  s = $AWS_SECRET_ACCESS_KEY'
-                test_rmt_cmd = "ssh -o 'StrictHostKeyChecking no' -i {key_file} {user}@{ip} '{cmd}'".format(
-                                                                                    key_file=machine["key_file_path"],
-                                                                                    user=machine["user"],
-                                                                                    ip=machine["ip"],
-                                                                                    cmd=test_cmd)
-                print test_rmt_cmd
-                os.system(test_rmt_cmd)
-
-            return { "success": True }
-
-        except Exception, e:
-            traceback.print_exc()
-            logging.error("prepare_machines : exiting method with error : {0}".format(str(e)))
-            return None
-
-def run_cli():
-    backend = backendservices(cli_mode=True)
-    logging.info("cli_mode = {0}".format(backend.cli_mode))
-
-    machine_info = {
-        "machines" : [
-            {
-                "ip": "54.86.68.83",
-                "user": "ubuntu",
-                "key_file_path": "/Users/kaos/Downloads/test-stochss-cli-1.pem",
-                "type": "master"
-            },
-            # {
-            #     "ip": "w.x.y.z",
-            #     "user": "ubuntu",
-            #     "key_file_path": "/path/to/key/file",
-            #     "type": "slave"
-            # }
-        ]
-    }
-
-    print dynamodb.create_table(backendservices.TABLE_NAME)
-
-    backend.prepare_machines(machine_info)
-
-    # time.sleep(5)
-    # print "is_queue_broker_up = ", backend.is_queue_broker_up()
-
-    with open('../../examples/dimer_decay.xml', 'r') as xmlfile:
-        model_xml_doc = xmlfile.read()
-
-    params = {}
-    params['paramstring'] = 'ssa -t 100 -i 10 -r 10 --keep-trajectories --seed 706370 --label'
-    params['document'] = model_xml_doc
-    params['job_type'] = 'stochkit'
-    params['bucketname'] = 'test-stochss-cli'
-
-    backend.execute_task(params)
 
 
 
@@ -1503,4 +1264,4 @@ if __name__ == "__main__":
     # #trying to investigate.  Pushing this to Mengyuan's task list - Chandra 7/23/14
     # test_stochoptim(backend,compute_check_params)
 
-    run_cli()
+

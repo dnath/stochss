@@ -1,0 +1,25 @@
+{
+    "output_store": {
+        "type" : "amazon_s3",
+        "bucket_name" : "stochss-cli-bucket"
+    },
+    "job_status_db_store": {
+        "type": "amazon_dynamodb",
+        "table_name": "stochss-cli"
+    },
+    "machines": [
+        {
+            "ip": "54.86.68.83",
+            "user": "ubuntu",
+            "key_file_path": "/Users/kaos/Downloads/test-stochss-cli-1.pem",
+            "type": "queue-head"
+        }
+    ],
+    "jobs": [
+        {
+            "job_type": "stochkit",
+            "model_file_path": "examples/dimer_decay.xml",
+            "paramstring": "ssa -t 100 -i 10 -r 10 --keep-trajectories --seed 706370 --label"
+        }
+    ]
+}
