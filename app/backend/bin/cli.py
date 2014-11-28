@@ -213,10 +213,10 @@ class BackendCli:
             raise Exception("celery config file not found: {0}".format(celery_config_filename))
 
         cmd = "scp -o 'StrictHostKeyChecking no' -i {key_file_path} {file} {user}@{ip}:celeryconfig.py".format(
-                                                                                            key_file_path=key_file_path,
-                                                                                            file=celery_config_filename,
-                                                                                            user=user,
-                                                                                            ip=ip)
+                                                                                        key_file_path=key_file_path,
+                                                                                        file=celery_config_filename,
+                                                                                        user=user,
+                                                                                        ip=ip)
         logging.info(cmd)
 
         success = os.system(cmd)

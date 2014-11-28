@@ -283,7 +283,7 @@ class EC2Agent(BaseAgent):
 
     commands.append('source /home/ubuntu/.bashrc')
 
-    userstr  = """#!/bin/bash \nset -x\nexec > >(tee /var/log/user-data.log|logger -t user-data -s 2>/dev/console) 2>&1\ntouch anand3.txt\necho "testing logfile"\necho BEGIN\ndate '+%Y-%m-%d %H:%M:%S'\necho END\ntouch anand2.txt\n"""
+    # userstr  = """#!/bin/bash \nset -x\nexec > >(tee /var/log/user-data.log|logger -t user-data -s 2>/dev/console) 2>&1\ntouch anand3.txt\necho "testing logfile"\necho BEGIN\ndate '+%Y-%m-%d %H:%M:%S'\necho END\ntouch anand2.txt\n"""
     # userstr+='export AWS_ACCESS_KEY_ID={0}\n'.format(str(credentials['EC2_ACCESS_KEY']))
     # userstr+='export AWS_SECRET_ACCESS_KEY={0}\n'.format( str(credentials['EC2_SECRET_KEY']))
     # userstr+='echo export AWS_ACCESS_KEY_ID={0} >> ~/.bashrc\n'.format(str(credentials['EC2_ACCESS_KEY']))

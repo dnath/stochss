@@ -14,7 +14,7 @@ from celery import Celery
 try:
     import celeryconfig
 except ImportError:
-    with open('{0}/celeryconfig.py.template'.format(os.path.dirname(__file__)), 'r') as fdr:
+    with open('{0}/celeryconfig.py.template'.format(os.path.dirname(__file__))) as fdr:
         with open('{0}/celeryconfig.py'.format(os.path.dirname(__file__)), 'w') as fdw:
             fdw.write(fdr.read())
     import celeryconfig

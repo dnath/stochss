@@ -8,6 +8,7 @@ import threading
 import os, subprocess, shlex, signal, uuid, sys, time
 import logging, traceback
 from datetime import datetime
+import pprint
 
 from tasks import *
 from utils import dynamodb
@@ -32,7 +33,7 @@ class backendservices():
     INFRA_EC2 = 'ec2'
     INFRA_CLUSTER = 'cluster'
     WORKER_AMIS = {
-        INFRA_EC2: 'ami-2c0a9844'
+        INFRA_EC2: 'ami-e0ad3288'
     }
 
     def __init__(self, **kwargs):
@@ -52,7 +53,8 @@ class backendservices():
         total_tries = total_wait_time / sleep_time
 
         current_try = 0
-        logging.info("About to check broker at: {0}".format(celery.current_app.conf['BROKER_URL']))
+        broker_url = celery.current_app.conf['BROKER_URL']
+        logging.info("About to check broker at: {0}".format(broker_url))
 
         while True:
             try:
@@ -79,7 +81,7 @@ class backendservices():
         This method instantiates celery tasks in the cloud.
         Returns return value from celery async call and the task ID
         '''
-        logging.debug("params = {0}".format(params))
+        logging.debug("params = \n{0}".format(pprint.pformat(params)))
         result = {}
         try:
             #This is a celery task in tasks.py: @celery.task(name='stochss')
@@ -272,7 +274,7 @@ class backendservices():
          
         '''
         try:           
-            logging.info("execute_local_task : inside method with params : %s ", str(params))
+            logging.info("execute_local_task : inside method with params : \n%s ", pprint.pformat(params))
             res = {}
             
             paramstr =  params['paramstring']
@@ -510,7 +512,7 @@ class backendservices():
         '''
         This method instantiates ec2 instances
         '''
-        logging.info("start_machines : inside method with params : %s", str(params))
+        logging.info("start_machines : inside method with params : \n%s", pprint.pformat(params))
         try:
             #make sure that any keynames we use are prefixed with stochss so that
             #we can do a terminate all based on keyname prefix
@@ -587,41 +589,27 @@ class backendservices():
             return None
 
     def __copy_celery_config_to_instance(self, reservation, params):
-##      # Update celery config file...it should have the correct IP
-##      # of the Queue head node, which should already be running.
-##      celery_config_filename = os.path.join(
-##        os.path.dirname(os.path.abspath(__file__)),
-##        "../celeryconfig.py"
-##      )
-##      # Pass it line by line so theres no weird formatting errors from 
-##      # trying to echo a multi-line file directly on the command line
-##      with open(celery_config_filename, 'r') as celery_config_file:
-##        lines = celery_config_file.readlines()
-##        # Make sure we overwrite the file with our first write
-##        userstr += "echo '{0}' > /home/ubuntu/celeryconfig.py\n".format(lines[0])
-##        for line in lines[1:]:
-##          userstr += "echo '{0}' >> /home/ubuntu/celeryconfig.py\n".format(line)
-        #print "reservation={0}".format(reservation)
-        #print "params={0}".format(params)
-
-        keyfile = "{0}/../{1}.key".format(os.path.dirname(__file__),params['keyname'])
+        keyfile = os.path.join(os.path.dirname(__file__), '..', "{0}.key".format(params['keyname']))
         logging.debug("keyfile = {0}".format(keyfile))
 
         if not os.path.exists(keyfile):
             raise Exception("ssh keyfile file not found: {0}".format(keyfile))
 
-        celery_config_filename = "{0}/{1}".format(os.path.dirname(__file__),"/celeryconfig.py")
+        celery_config_filename = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'celeryconfig.py')
+        logging.info("celery_config_filename = {0}".format(celery_config_filename))
 
         if not os.path.exists(celery_config_filename):
             raise Exception("celery config file not found: {0}".format(celery_config_filename))
 
         for ip in reservation['vm_info']['public_ips']:
             self.__wait_for_ssh_connection(keyfile, ip)
-            cmd = "scp -o 'StrictHostKeyChecking no' -i {0} {1} ubuntu@{2}:celeryconfig.py".format(keyfile, celery_config_filename, ip)
-
+            cmd = "scp -o 'StrictHostKeyChecking no' -i {keyfile} {file} ubuntu@{ip}:celeryconfig.py".format(
+                                                                                        keyfile=keyfile,
+                                                                                        file=celery_config_filename,
+                                                                                        ip=ip)
             logging.info(cmd)
-
             success = os.system(cmd)
+
             if success == 0:
                 logging.info("scp success: {0} transfered to {1}".format(celery_config_filename, ip))
             else:
@@ -647,7 +635,7 @@ class backendservices():
         raise Exception("Timeout waiting to connect to node via SSH")
 
     def __start_celery_via_ssh(self, reservation, params):
-        print 'inside __start_celery_via_ssh'
+        logging.info('inside __start_celery_via_ssh, params =\n%s', pprint.pformat(params))
         ##    # Even the queue head gets a celery worker
         ##    # NOTE: We only need to use the -n argument to celery command if we are starting
         ##    #       multiple workers on the same machine. Instead, we are starting one worker
@@ -844,7 +832,7 @@ class backendservices():
     def __update_celery_config_with_queue_head_ip(self, queue_head_ip):
         # Write queue_head_ip to file on the appropriate line
         current_dir = os.path.dirname(os.path.abspath(__file__))
-        celery_config_filename = os.path.join(current_dir, "conf", "celeryconfig.py")
+        celery_config_filename = os.path.join(current_dir, "celeryconfig.py")
         celery_template_filename = os.path.join(current_dir, "conf", "celeryconfig.py.template")
 
         logging.debug("celery_config_filename = {0}".format(celery_config_filename))
