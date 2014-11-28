@@ -33,7 +33,7 @@ class backendservices():
     INFRA_EC2 = 'ec2'
     INFRA_CLUSTER = 'cluster'
     WORKER_AMIS = {
-        INFRA_EC2: 'ami-e0ad3288'
+        INFRA_EC2: 'ami-9847d8f0'
     }
 
     def __init__(self, **kwargs):
@@ -81,7 +81,7 @@ class backendservices():
         This method instantiates celery tasks in the cloud.
         Returns return value from celery async call and the task ID
         '''
-        logging.debug("params = \n{0}".format(pprint.pformat(params)))
+        logging.debug("execute_task: params = \n{0}".format(pprint.pformat(params)))
         result = {}
         try:
             #This is a celery task in tasks.py: @celery.task(name='stochss')
@@ -104,7 +104,7 @@ class backendservices():
             result["db_id"] = task_id
 
             #create a celery task
-            logging.info("executeTask : executing task with uuid : %s ", task_id)
+            logging.info("execute_task: executing task with uuid : %s ", task_id)
             time_now = datetime.now()
             data = {
                 'status': "pending",
@@ -236,9 +236,10 @@ class backendservices():
                 poll_task_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "poll_task.py")
                 logging.info("Task sent to cloud with celery id {0}...".format(tmp.id))
 
-                poll_task_string = "python {0} {1} {2} > poll_task_{1}.log 2>&1".format(poll_task_path,
-                                                                                        tmp.id,
-                                                                                        queue_name)
+                poll_task_string = "python {poll_task_path} {id} {queue_name} > poll_task_{id}.log 2>&1".format(
+                                                                        poll_task_path=poll_task_path,
+                                                                        id=tmp.id,
+                                                                        queue_name=queue_name)
                 p = subprocess.Popen(shlex.split(poll_task_string))
                 result["celery_pid"] = tmp.id
 
@@ -248,12 +249,12 @@ class backendservices():
                 tmp = task.delay(task_id, params)  #calls task(taskid,params)
                 result["celery_pid"] = tmp.id
 
-            logging.info("executeTask :  result of task : %s", str(tmp))
+            logging.info("execute_task:  result of task : %s", str(tmp))
             result["success"] = True
             return result
 
         except Exception, e:
-            logging.error("executeTask : error - %s", str(e))
+            logging.error("execute_task: error - %s", str(e))
             return {
                 "success": False,
                 "reason": str(e),
@@ -298,13 +299,14 @@ class backendservices():
             backend_dir = os.path.abspath(os.path.dirname(__file__))
             # The following executiong string is of the form :
             # stochkit_exec_str = "ssa -m ~/output/%s/dimer_decay.xml -t 20 -i 10 -r 1000" % (uuidstr)
-            stochkit_exec_str = "{backend_dir}/wrapper.py {stdout} {stderr} {0} --model {1} --out-dir output/{2}/result ".format(paramstr,
-                                                                                                                                xml_file_path,
-                                                                                                                                uuidstr,
-                                                                                                                                stdout=res['stdout'],
-                                                                                                                                stderr=res['stderr'],
-                                                                                                                                backend_dir=backend_dir)
-            print stochkit_exec_str
+            stochkit_exec_str = \
+                "{backend_dir}/wrapper.py {stdout} {stderr} {paramstr} --model {xml} --out-dir output/{uuid}/result ".format(
+                                                                                                paramstr=paramstr,
+                                                                                                xml=xml_file_path,
+                                                                                                uuid=uuidstr,
+                                                                                                stdout=res['stdout'],
+                                                                                                stderr=res['stderr'],
+                                                                                                backend_dir=backend_dir)
             logging.info("STOCHKIT_EXEX_STR: " + stochkit_exec_str)
             logging.debug("execute_local_task: Spawning StochKit Task. String : %s", stochkit_exec_str)
             
@@ -699,11 +701,11 @@ class backendservices():
         try:
             i = InfrastructureManager()
             res = i.describe_instances(params, [], key_prefix)
-            logging.info("describeMachines : exiting method with result : %s", str(res))
+            logging.info("describe_machines : exiting method with result : \n%s", pprint.pformat(res))
             return res
 
         except Exception, e:
-            logging.error("describeMachines : exiting method with error : %s", str(e))
+            logging.error("describe_machines : exiting method with error : \n%s", str(e))
             return None
 
     def validate_credentials(self, params):
@@ -711,30 +713,30 @@ class backendservices():
         This method verifies the validity of ec2 credentials
         '''
         if params['infrastructure'] is None :
-            logging.error("validateCredentials: infrastructure param not set")
+            logging.error("validate_credentials: infrastructure param not set")
             return False
 
         creds = params['credentials']
         if creds is None :
-            logging.error("validateCredentials: credentials param not set")
+            logging.error("validate_credentials: credentials param not set")
             return False
 
         if creds['EC2_ACCESS_KEY'] is None :
-            logging.error("validateCredentials: credentials EC2_ACCESS_KEY not set")
+            logging.error("validate_credentials: credentials EC2_ACCESS_KEY not set")
             return False
 
         if creds['EC2_SECRET_KEY'] is None :
-            logging.error("validateCredentials: credentials EC2_ACCESS_KEY not set")
+            logging.error("validate_credentials: credentials EC2_ACCESS_KEY not set")
             return False
 
-        logging.info("validateCredentials: inside method with params : %s", str(params))
+        logging.info("validate_credentials: inside method with params : \n%s", pprint.pformat(params))
         try:
             i = InfrastructureManager()
-            logging.info("validateCredentials: exiting with result : %s", str(i))
+            logging.info("validate_credentials: exiting with result : %s", str(i))
             return i.validate_Credentials(params)
 
         except Exception, e:
-            logging.error("validateCredentials: exiting with error : %s", str(e))
+            logging.error("validate_credentials: exiting with error : %s", str(e))
             return False
 
     def get_output_results_size(self, aws_access_key, aws_secret_key, output_buckets):
@@ -752,7 +754,7 @@ class backendservices():
          The output size is either the size specified in bytes or None if no output was found.
         '''
         try:
-            logging.info("getSizeOfOutputResults: inside method with output_buckets: {0}".format(output_buckets))
+            logging.info("get_output_results_size: inside method with output_buckets: {0}".format(output_buckets))
             # Connect to S3
             conn = S3Connection(aws_access_key, aws_secret_key)
             # Output is a dictionary
@@ -778,7 +780,7 @@ class backendservices():
             return result
 
         except Exception, e:
-            logging.error("getSizeOfOutputResults: unable to get size with exception: {0}".format(e))
+            logging.error("get_output_results_size: unable to get size with exception: {0}".format(e))
             return None
     
     def fetch_output(self, taskid, outputurl):
@@ -789,22 +791,26 @@ class backendservices():
         @return: True : if successful or False : if failed 
         '''
         try : 
-            logging.info("fetchOutput: inside method with taskid : {0} and url {1}".format(taskid, outputurl))
+            logging.info("fetch_output: inside method with taskid: {0} and url: {1}".format(taskid, outputurl))
             filename = "{0}.tar".format(taskid)
             #the output directory
             #logging.debug("fetchOutput : the name of file to be fetched : {0}".format(filename))
             #baseurl = "https://s3.amazonaws.com/stochkitoutput/output"
             #fileurl = "{0}/{1}".format(baseurl,filename)
+
             logging.debug("url to be fetched : {0}".format(taskid))
             fetchurlcmdstr = "curl --remote-name {0}".format(outputurl)
-            logging.debug("fetchOutput : Fetching file using command : {0}".format(fetchurlcmdstr))
+
+            logging.debug("fetch_output : Fetching file using command : {0}".format(fetchurlcmdstr))
+
             os.system(fetchurlcmdstr)
             if not os.path.exists(filename):
                 logging.error('unable to download file. Returning result as False')
                 return False
             return True
+
         except Exception, e:
-            logging.error("fetchOutput : exiting with error : %s", str(e))
+            logging.error("fetch_output : exiting with error : %s", str(e))
             return False
 
     def terminate_machines(self, params, block=False):
@@ -853,14 +859,6 @@ class backendservices():
         #TODO: Doesnt seem to work in GAE until next request comes in to server
         my_celery = CelerySingleton()
         my_celery.configure()
-
-
-
-
-
-
-
-
 
 
 ################## tests #############################

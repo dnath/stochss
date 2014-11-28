@@ -113,9 +113,12 @@ class AmiCreator:
 
   def __launch_instance(self):
     key_pair = self.ec2_connection.create_key_pair(self.key_name)
-    key_pair.save('.')
+    
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    key_pair.save(current_dir)
 
-    self.key_file = str(os.path.join(os.path.dirname(os.path.abspath(__file__)), "{0}.pem".format(self.key_name)))
+    self.key_file = os.path.join(current_dir, "{0}.pem".format(self.key_name))
+ 
     if os.path.exists(self.key_file):
       print 'Downloaded key file: ', self.key_file
     else:
@@ -288,8 +291,8 @@ class AmiCreator:
     print '============='
     print 'Making AMI...'
     print '============='
-    date_string = time.strftime("%y%b%d-%H%M%S")
-    new_ami_name = "StochSS-Server-" + date_string
+    date_string = time.strftime("%Y%b%d-%H%M%S")
+    new_ami_name = "StochSS-Server-{0}".format(date_string)
 
     print "Creating AMI '{0}' from instance {1}...".format(new_ami_name, self.instance_id)
     new_ami_id = self.ec2_connection.create_image(self.instance_id, new_ami_name)
