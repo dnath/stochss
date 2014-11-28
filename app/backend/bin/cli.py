@@ -58,10 +58,8 @@ class BackendCli:
             with open(job['model_file_path']) as xml_file:
                 model_xml_doc = xml_file.read()
 
-            params = {}
-            params['paramstring'] = job['paramstring']
+            params = job["params"]
             params['document'] = model_xml_doc
-            params['job_type'] = job['job_type']
             params['bucketname'] = self.output_store_info['bucket_name']
 
             self.backend.execute_task(params)

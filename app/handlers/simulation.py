@@ -4,7 +4,9 @@ import cgi
 import datetime
 import urllib
 import webapp2
-import tempfile,sys
+import tempfile
+import sys
+import pprint
 from google.appengine.ext import db
 import pickle
 import threading
@@ -676,7 +678,7 @@ class SimulatePage(BaseHandler):
         
             # Call backendservices and execute StochKit
             service = backendservices()
-            print "backendservices.executeTask() params = {0}".format(params)
+            print "backendservices.execute_task() params = {0}".format(pprint.pformat(params))
             cloud_result = service.execute_task(params)
             if not cloud_result["success"]:
                 e = cloud_result["exception"]

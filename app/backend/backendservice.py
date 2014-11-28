@@ -82,7 +82,9 @@ class backendservices():
         Returns return value from celery async call and the task ID
         '''
         logging.debug("execute_task: params = \n{0}".format(pprint.pformat(params)))
+
         result = {}
+
         try:
             #This is a celery task in tasks.py: @celery.task(name='stochss')
 
@@ -274,6 +276,8 @@ class backendservices():
            {"pid" : 'the process id of the task spawned', "output": "the directory where the files will be generated"}
          
         '''
+        logging.debug("execute_local_task: params = \n{0}".format(pprint.pformat(params)))
+
         try:           
             logging.info("execute_local_task : inside method with params : \n%s ", pprint.pformat(params))
             res = {}

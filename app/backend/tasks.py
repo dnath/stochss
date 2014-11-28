@@ -538,17 +538,18 @@ def task(task_id, params):
         result['uuid'] = uuidstr
         job_type = params['job_type']
 
-        create_dir_str = "mkdir -p output/%s/result " % uuidstr
+        result_dir = os.path.join('output', uuidstr, 'result')
+        create_dir_str = "mkdir -p %s" % result_dir
         os.system(create_dir_str)
 
-        filename = "output/{0}/{0}.xml".format(uuidstr)
+        filename = os.path.join('output', uuidstr, "{0}.xml".format(uuidstr))
         f = open(filename,'w')
         f.write(params['document'])
         f.close()
 
         xml_file_path = filename
-        stdout = "output/%s/stdout.log" % uuidstr
-        stderr = "output/%s/stderr.log" % uuidstr
+        stdout = os.path.join('output', uuidstr, 'stdout.log')
+        stderr = os.path.join('output', uuidstr, 'stderr.log')
 
         commands = []
         if job_type == 'stochkit':
@@ -583,6 +584,7 @@ def task(task_id, params):
                                                                                          stdout))
 
         exec_str = ';'.join(commands)
+
         print "========================"
         print " Command to be executed:"
         print "{0}".format(exec_str)
@@ -593,6 +595,7 @@ def task(task_id, params):
         os.system(exec_str)
         end_time = datetime.now()
 
+        print "Generated results ="
         results = os.listdir("output/{0}/result".format(uuidstr))
         if 'stats' in results and os.listdir("output/{0}/result/stats".format(uuidstr)) == ['.parallel']:
             raise Exception("The compute node can not handle a job of this size.")
