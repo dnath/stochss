@@ -103,7 +103,7 @@ class BackendCli:
         return commands
 
     def prepare_machines(self):
-        logging.debug("prepare_machines: inside method with machine_info : %s", str(self.machines))
+        logging.info("prepare_machines: inside method with machine_info : %s", str(self.machines))
 
         queue_head = None
         slave_machines = []
@@ -121,7 +121,7 @@ class BackendCli:
             raise InvalidConfigurationError("Need at least one master!")
 
         try:
-            self.backend.__update_celery_config_with_queue_head_ip(queue_head_ip=queue_head["ip"])
+            self.backend.update_celery_config_with_queue_head_ip(queue_head_ip=queue_head["ip"])
             logging.info("Updated celery config with queue head ip: {0}".format(queue_head["ip"]))
 
             for machine in self.machines:
@@ -142,7 +142,7 @@ class BackendCli:
                     rabbitmq_commands.append('sudo rabbitmqctl add_user stochss ucsb')
                     rabbitmq_commands.append('sudo rabbitmqctl set_permissions -p / stochss \\\".*\\\" \\\".*\\\" \\\".*\\\"')
 
-                    logging.debug("Adding RabbitMQ commands...")
+                    logging.info("Adding RabbitMQ commands...")
                     updated_command = ';'.join(commands + rabbitmq_commands)
 
                     remote_command = "ssh -o 'StrictHostKeyChecking no' -i {key_file} {user}@{ip} \"{cmd}\"".format(
@@ -157,7 +157,7 @@ class BackendCli:
                                                                                     ip=machine["ip"],
                                                                                     cmd=command)
 
-                logging.debug("Remote command: {0}".format(remote_command))
+                logging.info("Remote command: {0}".format(remote_command))
                 os.system(remote_command)
 
             return { "success": True }
@@ -201,13 +201,13 @@ class BackendCli:
 
 
     def __copy_celery_config_to_machine(self, user, ip, key_file_path):
-        logging.debug("keyfile = {0}".format(key_file_path))
+        logging.info("keyfile = {0}".format(key_file_path))
 
         if not os.path.exists(key_file_path):
             raise Exception("ssh keyfile file not found: {0}".format(key_file_path))
 
-        celery_config_filename = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "conf", "celeryconfig.py")
-        logging.debug("celery_config_filename = {0}".format(celery_config_filename))
+        celery_config_filename = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "celeryconfig.py")
+        logging.info("celery_config_filename = {0}".format(celery_config_filename))
 
         if not os.path.exists(celery_config_filename):
             raise Exception("celery config file not found: {0}".format(celery_config_filename))
@@ -227,7 +227,7 @@ class BackendCli:
 
 if __name__ == "__main__":
     # logging.basicConfig(filename='testoutput.log', filemode='w', level=logging.DEBUG)
-    logging.basicConfig(level=logging.DEBUG)
+    logging.basicConfig(level=logging.INFO)
 
     if len(sys.argv) < 2:
         cli_jobs_config_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'conf', 'cli_jobs_config.json')

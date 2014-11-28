@@ -563,7 +563,7 @@ class backendservices():
 
                 #NOTE: This relies on the InfrastructureManager being run in blocking mode...
                 queue_head_ip = res["vm_info"]["public_ips"][0]
-                self.__update_celery_config_with_queue_head_ip(queue_head_ip)
+                self.update_celery_config_with_queue_head_ip(queue_head_ip)
                 self.__copy_celery_config_to_instance(res, params)
 
                 self.__start_celery_via_ssh(res, params)
@@ -835,7 +835,7 @@ class backendservices():
             logging.error("Terminate machine failed with error : %s", str(e))
             return False
 
-    def __update_celery_config_with_queue_head_ip(self, queue_head_ip):
+    def update_celery_config_with_queue_head_ip(self, queue_head_ip):
         # Write queue_head_ip to file on the appropriate line
         current_dir = os.path.dirname(os.path.abspath(__file__))
         celery_config_filename = os.path.join(current_dir, "celeryconfig.py")
