@@ -21,6 +21,7 @@ except ImportError:
 
 import shlex
 import traceback
+import pprint
 
 class TaskConfig:
     STOCHSS_HOME = '/home/ubuntu/stochss'
@@ -521,6 +522,7 @@ def task(task_id, params):
     '''
     This is the actual work done by a task worker
     '''
+    print "params = \n{0}".format(pprint.pformat(params))
     uuidstr = task_id
 
     try:

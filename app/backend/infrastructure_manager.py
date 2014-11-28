@@ -4,6 +4,7 @@ import json
 import thread
 from utils import utils
 from utils.persistent_dictionary import PersistentStoreFactory, PersistentDictionary
+import pprint
 
 __author__ = 'hiranya'
 __email__ = 'hiranya@appscale.com'
@@ -185,7 +186,7 @@ class InfrastructureManager:
 
     utils.log('Received a request to run instances.')
 
-    utils.log('Request parameters are {0}'.format(parameters))
+    utils.log('Request parameters are {0}'.format(pprint.pformat(parameters)))
     for param in self.RUN_INSTANCES_REQUIRED_PARAMS:
       if not utils.has_parameter(param, parameters):
         return self.__generate_response(False, 'no ' + param)
@@ -218,6 +219,7 @@ class InfrastructureManager:
     utils.log('Generated reservation id {0} for this request.'.format(
       reservation_id)
     )
+
     #TODO: We are forcing blocking mode because of how the Google App Engine sandbox environment
     # joins on all threads before returning a response from a request, which effectively makes non-
     # blocking mode the same as blocking mode anyways.
@@ -232,13 +234,14 @@ class InfrastructureManager:
       #   self.REASON_NONE,
       #   {'reservation_id': reservation_id}.update(result)
       # )
+
     else:
       utils.log('Running spawn_vms in non-blocking mode')
-      thread.start_new_thread(self.__spawn_vms,
-        (agent, num_vms, parameters, reservation_id))
+      thread.start_new_thread(self.__spawn_vms, (agent, num_vms, parameters, reservation_id))
+
     utils.log('Successfully started request {0}.'.format(reservation_id))
-    return self.__generate_response(True,
-      self.REASON_NONE, {'reservation_id': reservation_id})
+
+    return self.__generate_response(True, self.REASON_NONE, {'reservation_id': reservation_id})
 
   def terminate_instances(self, parameters,prefix=''):
     """
@@ -273,10 +276,12 @@ class InfrastructureManager:
     """
     infrastructure = parameters[self.PARAM_INFRASTRUCTURE]
     agent = self.agent_factory.create_agent(infrastructure)
+
     if self.blocking:
       self.__kill_vms(agent, parameters, prefix)
     else:
       thread.start_new_thread(self.__kill_vms, (agent, parameters, prefix))
+
     return self.__generate_response(True, self.REASON_NONE)
 
   def __spawn_vms(self, agent, num_vms, parameters, reservation_id):
@@ -292,11 +297,12 @@ class InfrastructureManager:
     status_info = self.reservations.get(reservation_id)
     try:
       security_configured = agent.configure_instance_security(parameters)
-      instance_info = agent.run_instances(num_vms, parameters,
-        security_configured)
+      instance_info = agent.run_instances(num_vms, parameters, security_configured)
+
       ids = instance_info[0]
       public_ips = instance_info[1]
       private_ips = instance_info[2]
+
       status_info['state'] = self.STATE_RUNNING
       status_info['vm_info'] = {
         'public_ips': public_ips,
@@ -304,9 +310,11 @@ class InfrastructureManager:
         'instance_ids': ids
       }
       utils.log('Successfully finished request {0}.'.format(reservation_id))
+
     except AgentRuntimeException as exception:
       status_info['state'] = self.STATE_FAILED
       status_info['reason'] = exception.message
+
     self.reservations.put(reservation_id, status_info)
     return status_info
 
@@ -356,6 +364,7 @@ class InfrastructureManager:
     if type(parameters) != type('') and type(parameters) != type({}):
       raise TypeError('Invalid data type for parameters. Must be a '
                       'JSON string or a dictionary.')
+
     elif type(secret) != type(''):
       raise TypeError('Invalid data type for secret. Must be a string.')
 

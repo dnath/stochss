@@ -581,7 +581,7 @@ class backendservices():
 
                 params["num_vms"] = vms_requested
 
-            logging.info("start_machines : exiting method with result : %s", str(res))
+            logging.info("start_machines : exiting method with result : %s", pprint.pformat(res))
             return res
 
         except Exception, e:

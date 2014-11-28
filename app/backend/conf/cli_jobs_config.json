@@ -20,6 +20,11 @@
             "job_type": "stochkit",
             "model_file_path": "/Users/kaos/new1/stochss/examples/dimer_decay.xml",
             "paramstring": "ssa -t 100 -i 10 -r 10 --keep-trajectories --seed 706370 --label"
+        },
+        {
+            "job_type": "stochkit",
+            "model_file_path": "/Users/kaos/new1/stochss/examples/dimer_decay.xml",
+            "paramstring": "ssa -t 100 -i 10 -r 10 --keep-trajectories --seed 706370 --label"
         }
     ]
 }

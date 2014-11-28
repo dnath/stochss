@@ -622,7 +622,7 @@ class SimulatePage(BaseHandler):
             
             document = model.serialize()
 
-            params['document']=str(document)
+            params['document'] = str(document)
             filepath = ""
             params['file'] = filepath
             ensemblename = params['jobName']
