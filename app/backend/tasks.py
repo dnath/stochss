@@ -772,11 +772,11 @@ if __name__ == "__main__":
     from uuid import uuid4
     task_id = str(uuid4())
 
-    print 'task_id = ', task_id
+    print 'task_id = %s' % task_id
 
     val = {'status':"running", 'message':'done'}
     dynamodb.update_entry(task_id, val, 'stochss')
-    print dynamodb.describe_task([task_id, task_id], 'stochss')
+    print dynamodb.describe_tasks([task_id, task_id], 'stochss')
 
     xmlfile = open('../examples/dimer_decay.xml', 'r')
     doc = xmlfile.read()
@@ -785,8 +785,9 @@ if __name__ == "__main__":
     os.chdir(TaskConfig.STOCHSS_HOME)
     print "pwd = ", os.path.abspath(os.curdir)
 
-    print 'mkdir -p output/{0}'.format(task_id)
-    os.system('mkdir -p output/{0}'.format(task_id))
+    cmd = 'mkdir -p output/{0}'.format(task_id)
+    print cmd
+    os.system(cmd)
 
     task_args = {}
     task_args['paramstring'] = 'ssa -t 100 -i 1000 -r 100 --keep-trajectories --seed 706370 --label'
@@ -795,6 +796,6 @@ if __name__ == "__main__":
     task_args['job_type'] = 'stochkit'
 
     task(task_id, task_args)
-    print dynamodb.describe_task([task_id, task_id], 'stochss')
+    pprint.pprint(dynamodb.describe_tasks([task_id], 'stochss'))
 
     print 'BE SURE TO GO TO YOUR AWS ADMIN CONSOLE AND DELETE DYNAMODB TABLES AND S3 BUCKETS'

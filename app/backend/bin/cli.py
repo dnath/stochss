@@ -7,6 +7,8 @@ import logging
 import traceback
 import json
 import re
+import pprint
+import time
 
 from backendservice import backendservices
 from utils import dynamodb
@@ -53,6 +55,8 @@ class BackendCli:
 
         self.prepare_machines()
 
+        task_ids = []
+        task_id_job_map = {}
         for index, job in enumerate(self.jobs):
             logging.info("Preparing for  Job #{0}...".format(index))
             with open(job['model_file_path']) as xml_file:
@@ -62,10 +66,35 @@ class BackendCli:
             params['document'] = model_xml_doc
             params['bucketname'] = self.output_store_info['bucket_name']
 
-            self.backend.execute_task(params)
+            result = self.backend.execute_task(params)
             logging.info("Job #{0} submitted to backend.".format(index))
 
-    def get_preparing_commands(self):
+            if not result["success"]:
+                logging.error("Exception:\n%s" % result["exception"])
+
+            celery_task_id = result["celery_pid"]
+            task_id = result["db_id"]
+            task_ids.append(task_id)
+            task_id_job_map[task_id] = index
+
+        while True:
+            if len(task_ids) == 0:
+                break
+
+            time.sleep(5)
+            tasks = dynamodb.describe_tasks(task_ids=task_ids, table_name=self.job_status_db_store_info['table_name'])
+            for task_id in tasks.keys():
+                task = tasks[task_id]
+                job_index = task_id_job_map[task_id]
+
+                if task['status'] == 'finished':
+                    logging.info("Job #{0} finished.".format(job_index))
+                    logging.info("Status = \n{0}".format(pprint.pformat(task)))
+                    task_ids.remove(task_id)
+
+
+
+    def __get_preparing_commands(self):
         # These are commutative commands
 
         commands = []
@@ -100,11 +129,24 @@ class BackendCli:
 
         return commands
 
+    def __configure_celery(self, queue_head):
+        self.backend.update_celery_config_with_queue_head_ip(queue_head_ip=queue_head["ip"])
+        logging.info("Updated celery config with queue head ip: {0}".format(queue_head["ip"]))
+        for machine in self.machines:
+            logging.info("Copying celery config to {ip}".format(ip=machine["ip"]))
+            self.__copy_celery_config_to_machine(user=machine["user"],
+                                                 ip=machine["ip"],
+                                                 key_file_path=machine["key_file_path"])
+
+            logging.info("Starting celery on {ip}".format(ip=machine["ip"]))
+            self.__start_celery_on_machine_via_ssh(user=machine["user"],
+                                                   ip=machine["ip"],
+                                                   key_file_path=machine["key_file_path"])
+
     def prepare_machines(self):
-        logging.info("prepare_machines: inside method with machine_info : %s", str(self.machines))
+        logging.info("prepare_machines: inside method with machine_info : \n%s", pprint.pformat(self.machines))
 
         queue_head = None
-        slave_machines = []
         for machine in self.machines:
             if machine["type"] == "queue-head":
                 if queue_head is not None:
@@ -112,35 +154,29 @@ class BackendCli:
                 else:
                     queue_head = machine
             elif machine["type"] == "worker":
-                slave_machines.append(machine)
+                pass
             else:
                 raise InvalidConfigurationError("Invalid machine type : {0} !".format(machine["type"]))
+
         if queue_head == None:
             raise InvalidConfigurationError("Need at least one master!")
 
+        logging.info("queue head = \n{0}".format(pprint.pformat(queue_head)))
+
         try:
-            self.backend.update_celery_config_with_queue_head_ip(queue_head_ip=queue_head["ip"])
-            logging.info("Updated celery config with queue head ip: {0}".format(queue_head["ip"]))
-
-            for machine in self.machines:
-                self.__copy_celery_config_to_machine(user=machine["user"],
-                                                     ip=machine["ip"],
-                                                     key_file_path=machine["key_file_path"])
-
-                self.__start_celery_on_machine_via_ssh(user=machine["user"],
-                                                       ip=machine["ip"],
-                                                       key_file_path=machine["key_file_path"])
-
-            commands = self.get_preparing_commands()
-
+            commands = self.__get_preparing_commands()
             command = ';'.join(commands)
+
+            logging.info("Preparing environment on remote machines...")
             for machine in self.machines:
+                logging.info("For machine {ip}".format(ip=machine['ip']))
+
                 if machine['type'] == 'queue-head':
                     rabbitmq_commands = []
                     rabbitmq_commands.append('sudo rabbitmqctl add_user stochss ucsb')
                     rabbitmq_commands.append('sudo rabbitmqctl set_permissions -p / stochss \\\".*\\\" \\\".*\\\" \\\".*\\\"')
 
-                    logging.info("Adding RabbitMQ commands...")
+                    logging.info("Adding RabbitMQ commands for {0}...".format(machine['ip']))
                     updated_command = ';'.join(commands + rabbitmq_commands)
 
                     remote_command = "ssh -o 'StrictHostKeyChecking no' -i {key_file} {user}@{ip} \"{cmd}\"".format(
@@ -156,9 +192,14 @@ class BackendCli:
                                                                                     cmd=command)
 
                 logging.info("Remote command: {0}".format(remote_command))
-                os.system(remote_command)
+                success = os.system(command)
 
-            return { "success": True }
+                if success != 0:
+                    raise Exception("Remote command failed on {ip}!".format(ip=machine['ip']))
+
+            self.__configure_celery(queue_head)
+
+            return {"success": True}
 
         except Exception, e:
             traceback.print_exc()
@@ -167,8 +208,6 @@ class BackendCli:
 
 
     def __start_celery_on_machine_via_ssh(self, user, ip, key_file_path):
-        print 'inside __start_celery_on_machine_via_ssh'
-
         commands = []
         commands.append('source /home/ubuntu/.bashrc')
         commands.append('export PYTHONPATH=/home/ubuntu/pyurdme/:/home/ubuntu/stochss/app/:/home/ubuntu/stochss/app/backend')
@@ -216,8 +255,8 @@ class BackendCli:
                                                                                         user=user,
                                                                                         ip=ip)
         logging.info(cmd)
-
         success = os.system(cmd)
+
         if success == 0:
             logging.info("scp success: {0} transfered to {1}".format(celery_config_filename, ip))
         else:
@@ -229,7 +268,7 @@ if __name__ == "__main__":
 
     if len(sys.argv) < 2:
         cli_jobs_config_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'conf', 'cli_jobs_config.json')
-        print cli_jobs_config_file
+        logging.debug("cli_jobs_config_file = {0}".format(cli_jobs_config_file))
 
     else:
         cli_jobs_config_file = sys.argv[1]

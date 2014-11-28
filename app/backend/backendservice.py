@@ -33,7 +33,7 @@ class backendservices():
     INFRA_EC2 = 'ec2'
     INFRA_CLUSTER = 'cluster'
     WORKER_AMIS = {
-        INFRA_EC2: 'ami-9847d8f0'
+        INFRA_EC2: 'ami-4c188724'
     }
 
     def __init__(self, **kwargs):
@@ -277,11 +277,9 @@ class backendservices():
          
         '''
         logging.debug("execute_local_task: params = \n{0}".format(pprint.pformat(params)))
+        res = {}
 
-        try:           
-            logging.info("execute_local_task : inside method with params : \n%s ", pprint.pformat(params))
-            res = {}
-            
+        try:
             paramstr =  params['paramstring']
             uuidstr = str(uuid.uuid4())
             res['uuid'] = uuidstr
@@ -386,7 +384,7 @@ class backendservices():
 
         result = {}
         try:
-            result = dynamodb.describe_task(params['taskids'], backendservices.TABLE_NAME)
+            result = dynamodb.describe_tasks(params['taskids'], backendservices.TABLE_NAME)
         except Exception, e:
             logging.error("describe_task : exiting with error : %s", str(e))
             return None
@@ -585,7 +583,7 @@ class backendservices():
 
                 params["num_vms"] = vms_requested
 
-            logging.info("start_machines : exiting method with result : %s", pprint.pformat(res))
+            logging.info("start_machines : exiting method with result : \n%s", pprint.pformat(res))
             return res
 
         except Exception, e:
