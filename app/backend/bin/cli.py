@@ -50,11 +50,23 @@ class BackendCli:
         self.output_store_info = cli_jobs_config["output_store"]
         self.job_status_db_store_info = cli_jobs_config["job_status_db_store"]
 
-    def run(self):
-        print dynamodb.create_table(self.job_status_db_store_info['table_name'])
+    def __wait_for_jobs(self, task_id_job_map, task_ids):
+        while True:
+            if len(task_ids) == 0:
+                break
 
-        self.prepare_machines()
+            time.sleep(5)
+            tasks = dynamodb.describe_tasks(task_ids=task_ids, table_name=self.job_status_db_store_info['table_name'])
+            for task_id in tasks.keys():
+                task = tasks[task_id]
+                job_index = task_id_job_map[task_id]
 
+                if task['status'] == 'finished':
+                    logging.info("Job #{0} finished.".format(job_index))
+                    logging.info("Status = \n{0}".format(pprint.pformat(task)))
+                    task_ids.remove(task_id)
+
+    def __launch_jobs(self):
         task_ids = []
         task_id_job_map = {}
         for index, job in enumerate(self.jobs):
@@ -72,25 +84,20 @@ class BackendCli:
             if not result["success"]:
                 logging.error("Exception:\n%s" % result["exception"])
 
-            celery_task_id = result["celery_pid"]
             task_id = result["db_id"]
             task_ids.append(task_id)
             task_id_job_map[task_id] = index
 
-        while True:
-            if len(task_ids) == 0:
-                break
+        return task_id_job_map, task_ids
 
-            time.sleep(5)
-            tasks = dynamodb.describe_tasks(task_ids=task_ids, table_name=self.job_status_db_store_info['table_name'])
-            for task_id in tasks.keys():
-                task = tasks[task_id]
-                job_index = task_id_job_map[task_id]
+    def run(self):
+        dynamodb.create_table(self.job_status_db_store_info['table_name'])
 
-                if task['status'] == 'finished':
-                    logging.info("Job #{0} finished.".format(job_index))
-                    logging.info("Status = \n{0}".format(pprint.pformat(task)))
-                    task_ids.remove(task_id)
+        self.prepare_machines()
+        task_id_job_map, task_ids = self.__launch_jobs()
+        self.__wait_for_jobs(task_id_job_map, task_ids)
+
+        logging.info('All jobs finished!')
 
 
 
