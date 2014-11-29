@@ -66,6 +66,9 @@ class AmiCreator:
     self.python_packages = options['python_packages']
     self.git_repo = options['git_repo']
 
+    print 'GIT REPO: {0}'.format(self.git_repo['url'])
+    print 'BRANCH: {0}'.format(self.git_repo['branch'])
+
     self.ec2_connection = self.__create_ec2_connection()
 
     self.key_name = "test_stochss_kp_{0}".format(self.uuid)
@@ -118,7 +121,7 @@ class AmiCreator:
     key_pair.save(current_dir)
 
     self.key_file = os.path.join(current_dir, "{0}.pem".format(self.key_name))
- 
+
     if os.path.exists(self.key_file):
       print 'Downloaded key file: ', self.key_file
     else:
@@ -291,6 +294,7 @@ class AmiCreator:
     print '============='
     print 'Making AMI...'
     print '============='
+
     date_string = time.strftime("%Y%b%d-%H%M%S")
     new_ami_name = "StochSS-Server-{0}".format(date_string)
 
